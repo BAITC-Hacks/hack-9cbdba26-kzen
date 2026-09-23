@@ -355,7 +355,7 @@ def _what_if_lines(c: Container, draft: OrderDraft, what_if: dict[str, Any]) -> 
                 MonthPoint(p.month, p.sold * factor, p.stock_start) for p in sku.history
             ))
         line = calc.calculate_line(sku, _params(c, sku.supplier, delay_days=delay))
-        a = assess(sku, line, prepare(sku.history))
+        a = assess(sku, line, prepare(sku.history, sku.bulk_orders))
         result.append(draft_line(line, a.status, a.messages, a.codes))
     return result
 
@@ -371,7 +371,7 @@ def explanation(c: Container, sku_id: str) -> dict[str, Any]:
         raise NotFoundError(f"Артикул {code!r} не найден", details={"sku_id": sku_id})
 
     s = c.workspace.supplier(sku.supplier)
-    cleaned = prepare(sku.history)
+    cleaned = prepare(sku.history, sku.bulk_orders)
     forecaster = c.forecasters[METHOD]
     cleaned_sku = replace(sku, history=cleaned.points)
     arrival = (c.workspace.calc_date or date.today()) + timedelta(days=s.lead_time_days)
@@ -402,8 +402,7 @@ def explanation(c: Container, sku_id: str) -> dict[str, Any]:
         "qty": round(raw[m].sold - next(cp.sold for cp in cleaned.points if cp.month == m)),
         "included": False,
         "title_text": f"Разовые продажи в {m.strftime('%m.%Y')} — исключены из регулярного спроса",
-        "note_text": "Продажи месяца выше ожидаемого уровня в 3 раза и более; "
-                     "ожидаемый уровень — медиана того же месяца других лет.",
+        "note_text": _one_off_note(sku, m),
     } for m in cleaned.bulk_months]
     stockouts = [{
         "id": f"s{p.month.strftime('%Y-%m')}", "month": p.month.strftime("%Y-%m"),
@@ -487,6 +486,18 @@ def explanation(c: Container, sku_id: str) -> dict[str, Any]:
         # Расширение контракта: что агент делал по этой позиции
         "agent_trace": [_trace(e) for e in draft.trace if e.sku == code],
     }
+
+
+def _one_off_note(sku: Sku, month: date) -> str:
+    # Накладная — проверяемое доказательство: менеджер найдёт её в 1С по номеру
+    invoices = [b for b in sku.bulk_orders if b.month == month]
+    if not invoices:
+        return ("Продажи месяца выше ожидаемого уровня в 3 раза и более; "
+                "ожидаемый уровень — медиана того же месяца других лет.")
+    return "; ".join(
+        f"Накладная {b.invoice}: {b.quantity:g} {sku.unit} при обычной {b.regular_quantity:g}"
+        for b in invoices
+    ) + " — разовая отгрузка, излишек исключён."
 
 
 def _add_months(d: date, n: int) -> date:

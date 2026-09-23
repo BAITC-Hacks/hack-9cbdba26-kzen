@@ -427,11 +427,12 @@ def explanation(c: Container, sku_id: str) -> dict[str, Any]:
             "one_off_included": 0, "in_base": True, "partial": False, "missing": False,
         })
     forecast = []
-    for i in range(1, 4):
-        m = _add_months(sku.history[-1].month, i) if sku.history else arrival.replace(day=1)
-        forecast.append({"month": m.strftime("%Y-%m"),
-                         "label": f"П·{MONTH_LABELS[m.month - 1].lower()}",
-                         "qty": round(forecaster.forecast(cleaned_sku, m.month).monthly_demand)})
+    if sku.history:
+        for i in range(1, 4):
+            m = _add_months(sku.history[-1].month, i)
+            forecast.append({"month": m.strftime("%Y-%m"),
+                             "label": f"П·{MONTH_LABELS[m.month - 1].lower()}",
+                             "qty": round(forecaster.forecast(cleaned_sku, m.month).monthly_demand)})
 
     origin = "synthetic" if c.data_mode == "demo" else "real"
     iek_monthly_stock = c.data_mode != "demo" and supplier_id(sku.supplier) == "IEK"

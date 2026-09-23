@@ -169,6 +169,31 @@ def test_card_uses_invoice_bulk_like_calculation(settings):
     assert "TEST-1" in notes
 
 
+def test_card_forecast_requires_sales_history(settings):
+    from dataclasses import replace
+
+    repo = build_demo_repository()
+    sku = repo.get("200400050_")
+    repo.add(replace(sku, history=()))
+    container = Container(
+        settings=settings, repo=repo, cache=MemoryCache(),
+        forecasters={"baseline": BaselineForecaster(), "smoothed": SmoothedForecaster()},
+    )
+    with TestClient(create_app(settings, container=container)) as client:
+        assert client.post(f"{B}/calculations", json={}).status_code == 200
+        no_history = client.get(f"{B}/skus/IEK:200400050_/explanation")
+        with_history = client.get(f"{B}/skus/SE:300200430_/explanation")
+
+    assert no_history.status_code == 200
+    assert no_history.json()["chart"]["months"] == []
+    # Без продаж нулевые столбцы выглядели бы как подтверждённый прогноз.
+    assert no_history.json()["chart"]["forecast"] == []
+    assert with_history.status_code == 200
+    assert [point["month"] for point in with_history.json()["chart"]["forecast"]] == [
+        "2026-09", "2026-10", "2026-11",
+    ]
+
+
 def test_calculation_toast_matches_table_summary(ui):
     toast = ui.post(f"{B}/calculations", json={}).json()["toast"]
     summary = ui.post(f"{B}/recommendations/search", json={}).json()["summary"]

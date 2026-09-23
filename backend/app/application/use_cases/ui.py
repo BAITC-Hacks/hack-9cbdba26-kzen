@@ -432,7 +432,9 @@ def explanation(c: Container, sku_id: str) -> dict[str, Any]:
             m = _add_months(sku.history[-1].month, i)
             forecast.append({"month": m.strftime("%Y-%m"),
                              "label": f"П·{MONTH_LABELS[m.month - 1].lower()}",
-                             "qty": round(forecaster.forecast(cleaned_sku, m.month).monthly_demand, 2)})
+                             "qty": round(
+                                 forecaster.forecast(cleaned_sku, m.month).monthly_demand, 2
+                             )})
 
     origin = "synthetic" if c.data_mode == "demo" else "real"
     iek_monthly_stock = c.data_mode != "demo" and supplier_id(sku.supplier) == "IEK"

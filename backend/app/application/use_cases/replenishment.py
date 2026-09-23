@@ -34,6 +34,11 @@ from app.domain.ports import ForecasterPort, SkuRepositoryPort
 
 MONTH_DAYS = 30.0
 
+# Категории Systeme — приоритет пополнения из модели менеджера. Для более
+# приоритетных категорий держим дополнительный страховой запас; коэффициенты
+# фиксированы как бизнес-политика и всегда показываются в обосновании.
+CATEGORY_SAFETY_UPLIFT = {"1": 0.10, "2": 0.05, "3": 0.0}
+
 
 @dataclass(frozen=True, slots=True)
 class CalcParams:
@@ -102,7 +107,16 @@ def calculate_order_line(
 
     lead_months = (sku.lead_time_days or params.lead_time_days) / MONTH_DAYS
     horizon = lead_months + params.coverage_months
-    need = forecast.monthly_demand * horizon * (1 + params.safety_factor)
+    configured_uplift = (
+        CATEGORY_SAFETY_UPLIFT.get(sku.category, 0.0)
+        if sku.supplier == "Systeme Electric"
+        else 0.0
+    )
+    effective_safety = min(1.0, params.safety_factor + configured_uplift)
+    category_uplift = effective_safety - params.safety_factor
+    need_without_category = forecast.monthly_demand * horizon * (1 + params.safety_factor)
+    need = forecast.monthly_demand * horizon * (1 + effective_safety)
+    category_effect = need - need_without_category
     available = sku.free_stock + sku.in_transit
     raw_qty = need - available
 
@@ -118,7 +132,18 @@ def calculate_order_line(
         urgency=urgency,
         monthly_demand=round(forecast.monthly_demand, 2),
         coverage_months=round(min(coverage, 999.0), 2),
-        reasons=_build_reasons(sku, cleaned, forecast, params, need, available, quantity),
+        reasons=_build_reasons(
+            sku,
+            cleaned,
+            forecast,
+            params,
+            need,
+            available,
+            quantity,
+            effective_safety,
+            category_uplift,
+            category_effect,
+        ),
         method=forecast.method,
     )
 
@@ -165,7 +190,18 @@ def _urgency_rank(urgency: Urgency) -> int:
     return order[urgency]
 
 
-def _build_reasons(sku, cleaned, forecast: Forecast, params, need, available, quantity):
+def _build_reasons(
+    sku,
+    cleaned,
+    forecast: Forecast,
+    params,
+    need,
+    available,
+    quantity,
+    effective_safety,
+    category_uplift,
+    category_effect,
+):
     """Обоснование строки (Must have 5).
 
     Каждое число берётся из расчёта выше. Ни одно не сочиняется — поэтому
@@ -190,6 +226,16 @@ def _build_reasons(sku, cleaned, forecast: Forecast, params, need, available, qu
                 "Компенсация отсутствия товара",
                 f"{cleaned.stockout_months} мес, +{cleaned.compensated:.0f} {unit}",
                 effect=cleaned.compensated,
+            )
+        )
+
+    if sku.supplier == "Systeme Electric" and sku.category in CATEGORY_SAFETY_UPLIFT:
+        reasons.append(
+            ReasonPart(
+                "Категория",
+                f"{sku.category}: страховой запас {effective_safety:.0%} "
+                f"({category_uplift:+.0%} к базовому)",
+                effect=category_effect,
             )
         )
 

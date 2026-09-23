@@ -62,15 +62,19 @@ class RunSelfChecks:
         return self._calc.calculate_line(sku, self._params).quantity
 
     def _check_in_transit(self) -> CheckOutcome:
-        """Товар в пути обязан уменьшать заказ (Must have 1)."""
+        """Источники данных обязаны менять заказ, включая категорию (Must have 1)."""
         base = _sku(_history([50.0] * 24))
         with_transit = replace(base, in_transit=300.0)
+        category_3 = replace(base, supplier="Systeme Electric", category="3")
+        category_1 = replace(category_3, category="1")
 
         before, after = self._qty(base), self._qty(with_transit)
+        low_priority, high_priority = self._qty(category_3), self._qty(category_1)
         return CheckOutcome(
-            "Товар в пути влияет на результат",
-            after < before,
-            f"без товара в пути {before} шт, с 300 шт в пути — {after} шт",
+            "Источники данных влияют на результат",
+            after < before and high_priority > low_priority,
+            f"без товара в пути {before} шт, с 300 шт в пути — {after} шт; "
+            f"категория 3 — {low_priority} шт, категория 1 — {high_priority} шт",
         )
 
     def _check_seasonality(self) -> CheckOutcome:

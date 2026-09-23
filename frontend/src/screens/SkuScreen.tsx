@@ -214,7 +214,11 @@ export default function SkuScreen({ skuId, onBack, onSkuChange, onOrderChanged }
           <div className='notice' style={{ marginBottom: 16 }}>
             {narrative?.text || data.explanation_text}
             <div className="tiny" style={{ marginTop: 8 }}>
-              {narrativeLoading ? 'Формулирую обоснование…' : narrative?.source.startsWith('nvidia:') ? 'Сформулировано ИИ, числа из расчёта' : 'Шаблон'}
+              {narrativeLoading ? 'Формулирую обоснование…'
+                : narrative?.source.startsWith('llm:') ? `Сформулировано ИИ (${narrative.source.slice(4)}), числа из расчёта`
+                : narrative?.source.startsWith('template (LLM добавила') ? 'Показан шаблон: текст ИИ не прошёл проверку'
+                : narrative?.source === 'template (LLM недоступна)' ? 'Показан шаблон: ИИ недоступен'
+                : 'Шаблон из расчёта'}
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

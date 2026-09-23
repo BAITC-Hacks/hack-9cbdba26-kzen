@@ -352,8 +352,12 @@ def search(c: Container, query: dict[str, Any]) -> dict[str, Any]:
 
     if query.get("sort") == "code":
         rows.sort(key=lambda r: r["code_1c"])
-    else:  # deficit: сначала то, что кончится раньше; без спроса — в конец
-        rows.sort(key=lambda r: (r["cover_days"] is None, r["cover_days"] or 0))
+    else:
+        # Сначала то, что кончится раньше; при равном покрытии — крупные заказы выше.
+        # Без второго ключа первую страницу занимают позиции со спросом 0,02 шт/мес
+        # и заказом 1 шт: формально «срочно», но менеджеру важнее большие дефициты.
+        rows.sort(key=lambda r: (r["cover_days"] is None, r["cover_days"] or 0,
+                                -(r["final_qty"] or 0)))
 
     page_size = max(1, min(int(query.get("page_size") or 100), 500))
     pages_req = query.get("page") or {}

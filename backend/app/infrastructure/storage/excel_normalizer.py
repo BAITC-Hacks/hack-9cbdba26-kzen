@@ -149,20 +149,25 @@ def discover_supplier_files(data_dir: Path) -> list[SupplierFiles]:
     ]
 
 
+def file_markers(supplier: str) -> dict[str, str]:
+    """Тип файла → подстрока в имени. Один список и для загрузки папки, и для импорта
+    через интерфейс, иначе правила «что считается файлом остатков» разойдутся."""
+    return {
+        "monthly_sales": "ежемесячные продажи",
+        "monthly_stock": "ежемесячные остатки",
+        "transactions": "динамика продаж",
+        "moq": "moq",
+        "in_transit": "путь иэк" if supplier == "IEK" else "товар в пути",
+        "seasonality": "сезонность",
+    }
+
+
 def _supplier_files(supplier: str, paths: list[Path]) -> SupplierFiles:
     """Разложить xlsx одного поставщика по назначению; каждый тип — ровно один файл."""
+    markers = file_markers(supplier)
     return SupplierFiles(
         supplier=supplier,
-        monthly_sales=_one(paths, "ежемесячные продажи", supplier),
-        monthly_stock=_one(paths, "ежемесячные остатки", supplier),
-        transactions=_one(paths, "динамика продаж", supplier),
-        moq=_one(paths, "moq", supplier),
-        in_transit=_one(
-            paths,
-            "путь иэк" if supplier == "IEK" else "товар в пути",
-            supplier,
-        ),
-        seasonality=_one(paths, "сезонность", supplier),
+        **{kind: _one(paths, marker, supplier) for kind, marker in markers.items()},
     )
 
 

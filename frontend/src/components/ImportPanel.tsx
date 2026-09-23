@@ -171,7 +171,7 @@ export default function ImportPanel({ imports, onDataReplaced }: Props) {
       <section className="blueprint panel page-section"><Corners />
         <h2 className="card-title">Загрузка выгрузок 1С</h2>
         <p className="tiny" style={{ marginTop: 6 }}>
-          Ожидаются до шести файлов .xlsx по одному поставщику: {EXPECTED_FILES.join(', ')}. Исходные файлы не изменяются — сервер читает их и строит новый набор данных.
+          Можно загрузить от одного до шести файлов .xlsx одного поставщика: {EXPECTED_FILES.join(', ')}. Недостающие типы берутся из текущего набора данных. Исходные файлы не изменяются.
         </p>
 
         <div className="field-grid" style={{ marginTop: 14 }}>

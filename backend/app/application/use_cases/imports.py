@@ -5,6 +5,11 @@
 задач живёт в памяти процесса (реестр на контейнере) — как версии расчёта:
 один воркер, перезапуск обнуляет историю, для прода нужна таблица.
 
+Можно загрузить любой поднабор файлов, хоть один: недостающие типы берутся
+из текущего набора поставщика — папки `data/` при старте или каталога последнего
+применённого импорта. Загрузчик по-прежнему требует все шесть файлов, поэтому
+слияние делается на уровне каталога, а не внутри нормализатора.
+
 Успешный импорт заменяет данные только своего поставщика: второй поставщик
 остаётся как был. Версии и правки сбрасываются — они привязаны к старому
 снимку данных, и оставлять их значило бы показывать заказ, посчитанный
@@ -49,6 +54,9 @@ class ImportJob:
     report: dict[str, Any] | None = None
     error: str | None = None
     applied: bool = False
+    # Файлы, взятые из прошлого набора вместо загруженных: менеджер должен видеть,
+    # на каких данных считается заказ
+    reused_files: list[str] = field(default_factory=list)
     # Событие, а не опрос статуса: тесты и вызывающий код ждут завершения без sleep
     done: threading.Event = field(default_factory=threading.Event, repr=False)
 
@@ -62,6 +70,7 @@ class ImportJob:
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
             "error": self.error,
             "applied": self.applied,
+            "reused_files": list(self.reused_files),
         }
         if with_report:
             payload["report"] = self.report
@@ -79,6 +88,19 @@ class ImportRegistry:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._jobs: dict[str, ImportJob] = {}
+        # Каталог последнего применённого импорта по поставщику: источник
+        # недостающих файлов для следующего частичного импорта
+        self._sources: dict[str, Path] = {}
+
+    def source(self, supplier: str) -> Path | None:
+        return self._sources.get(supplier)
+
+    def keep_source(self, supplier: str, directory: Path) -> Path | None:
+        """Запомнить каталог применённого импорта; вернуть предыдущий для удаления."""
+        with self._lock:
+            previous = self._sources.get(supplier)
+            self._sources[supplier] = directory
+        return previous
 
     def create(self, supplier: str, files: list[str], directory: Path) -> ImportJob:
         job = ImportJob(
@@ -172,6 +194,72 @@ def _default_loader(supplier: str, directory: Path) -> Any:
     return load_supplier_dataset(supplier, directory)
 
 
+def _current_files(c: Container, supplier: str) -> list[Path]:
+    """Файлы поставщика, по которым сервис считает сейчас."""
+    from app.infrastructure.storage.excel_normalizer import SUPPLIER_MARKERS
+
+    kept = c.imports.source(supplier)
+    if kept is not None and kept.exists():
+        return sorted(kept.rglob("*.xlsx"))
+    data_dir = c.settings.data_dir
+    if data_dir is None or not data_dir.exists():
+        return []
+    marker = SUPPLIER_MARKERS[supplier]
+    return [path for path in sorted(data_dir.rglob("*.xlsx")) if marker in str(path).casefold()]
+
+
+def _classify(supplier: str, names: list[str]) -> dict[str, str]:
+    """Имя файла → тип; неизвестный тип и два файла одного типа отклоняются сразу."""
+    from app.infrastructure.storage.excel_normalizer import file_markers
+
+    markers = file_markers(supplier)
+    by_kind: dict[str, str] = {}
+    for name in names:
+        kind = next((k for k, marker in markers.items() if marker in name.casefold()), None)
+        if kind is None:
+            raise DomainValidationError(
+                f"Не удалось понять назначение файла {name!r}: в имени нет ни одного "
+                f"из ожидаемых слов ({', '.join(markers.values())})",
+                code="UNKNOWN_FILE_KIND", field="files", details={"file": name},
+            )
+        if kind in by_kind:
+            raise DomainValidationError(
+                f"Файлы {by_kind[kind]!r} и {name!r} одного типа — оставьте один",
+                code="DUPLICATE_FILE_KIND", field="files",
+                details={"files": [by_kind[kind], name]},
+            )
+        by_kind[kind] = name
+    return by_kind
+
+
+def _fill_missing(
+    c: Container, supplier: str, directory: Path, uploaded: dict[str, str]
+) -> list[str]:
+    """Докопировать в каталог импорта недостающие типы из текущего набора."""
+    from app.infrastructure.storage.excel_normalizer import file_markers
+
+    markers = file_markers(supplier)
+    current = _current_files(c, supplier)
+    reused: list[str] = []
+    missing: list[str] = []
+    for kind, marker in markers.items():
+        if kind in uploaded:
+            continue
+        matches = [path for path in current if marker in path.name.casefold()]
+        if len(matches) != 1:
+            missing.append(marker)
+            continue
+        shutil.copyfile(matches[0], directory / matches[0].name)
+        reused.append(matches[0].name)
+    if missing:
+        raise DomainValidationError(
+            f"Для {supplier} нет текущих данных, из которых можно взять недостающие файлы: "
+            f"{', '.join(missing)}. Загрузите их вместе с остальными",
+            code="MISSING_FILES", field="files", details={"missing": missing},
+        )
+    return reused
+
+
 def start_import(
     c: Container, supplier: str, uploads: list[tuple[str, bytes]], *, loader: Loader | None = None
 ) -> dict[str, Any]:
@@ -186,29 +274,40 @@ def start_import(
         raise DomainValidationError(
             "Имена файлов повторяются", code="DUPLICATE_FILE", field="files",
         )
+    uploaded_kinds = _classify(supplier, names)
 
     directory = Path(tempfile.mkdtemp(prefix="ekt-import-")) / supplier
     directory.mkdir()
-    for name, (_, content) in zip(names, uploads, strict=True):
-        (directory / name).write_bytes(content)
+    try:
+        for name, (_, content) in zip(names, uploads, strict=True):
+            (directory / name).write_bytes(content)
+        reused = _fill_missing(c, supplier, directory, uploaded_kinds)
+    except Exception:
+        shutil.rmtree(directory.parent, ignore_errors=True)
+        raise
 
     job = c.imports.create(supplier, names, directory)
+    job.reused_files = reused
     threading.Thread(
         target=_run, args=(c, job, loader or _default_loader),
         name=f"import-{job.import_id}", daemon=True,
     ).start()
     return {
         "import_id": job.import_id, "status": job.status,
-        "supplier": job.supplier, "files": job.files,
+        "supplier": job.supplier, "files": job.files, "reused_files": reused,
     }
 
 
 def _run(c: Container, job: ImportJob, loader: Loader) -> None:
     """Тело фонового потока: любая ошибка превращается в статус failed, не в падение сервиса."""
+    applied = False
     try:
         loaded = loader(job.supplier, job.directory)
         _apply(c, job.supplier, loaded.repository.list_skus())
-        c.imports.finish(job, report=loaded.report.to_dict(), error=None)
+        report = loaded.report.to_dict()
+        report.setdefault("metrics", {})["reused_from_previous"] = list(job.reused_files)
+        c.imports.finish(job, report=report, error=None)
+        applied = True
         logger.info("Импорт %s применён: %s", job.import_id, job.supplier)
     except DomainError as exc:
         c.imports.finish(job, report=None, error=exc.message)
@@ -217,8 +316,14 @@ def _run(c: Container, job: ImportJob, loader: Loader) -> None:
         c.imports.finish(job, report=None, error=f"Не удалось разобрать файлы: {exc}")
         logger.exception("Импорт %s упал", job.import_id)
     finally:
-        # Файлы больше не нужны: результат уже в памяти или отклонён
-        shutil.rmtree(job.directory.parent, ignore_errors=True)
+        if applied:
+            # Каталог остаётся источником недостающих файлов для следующего импорта;
+            # предыдущий такой каталог больше не нужен
+            previous = c.imports.keep_source(job.supplier, job.directory)
+            if previous is not None and previous != job.directory:
+                shutil.rmtree(previous.parent, ignore_errors=True)
+        else:
+            shutil.rmtree(job.directory.parent, ignore_errors=True)
 
 
 def _apply(c: Container, supplier: str, new_skus: list) -> None:

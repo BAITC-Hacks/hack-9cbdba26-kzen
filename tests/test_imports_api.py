@@ -25,6 +25,15 @@ def _iek_uploads(tmp_path: Path, *, drop: str | None = None) -> list[tuple]:
     return files
 
 
+def _corrupt(files: list[tuple], marker: str) -> list[tuple]:
+    """Подменить содержимое одного файла мусором: неполный набор теперь дополняется
+    текущими данными, поэтому «плохой импорт» моделируется нечитаемым файлом."""
+    return [
+        (field, (name, b"not an xlsx", mime)) if marker in name else (field, (name, content, mime))
+        for field, (name, content, mime) in files
+    ]
+
+
 def _start(client: TestClient, files: list[tuple], supplier: str = "IEK"):
     return client.post(f"{B}/imports", data={"supplier": supplier}, files=files)
 
@@ -74,13 +83,13 @@ def test_failed_import_keeps_repository(client, tmp_path):
     container = client.app.state.container
     before = {sku.code for sku in container.repo.list_skus()}
 
-    started = _start(client, _iek_uploads(tmp_path, drop="Ежемесячные продажи")).json()
+    started = _start(client, _corrupt(_iek_uploads(tmp_path), "Ежемесячные продажи")).json()
     job = _finish(client, started["import_id"])
 
     assert job["status"] == "failed"
     assert job["applied"] is False
     assert job["report"] is None
-    assert "ежемесячные продажи" in job["error"]
+    assert job["error"]
     assert {sku.code for sku in container.repo.list_skus()} == before
     assert container.data_mode == "imported"
 
@@ -107,7 +116,7 @@ def test_unknown_import_is_404(client):
 
 
 def test_list_returns_newest_first_without_report(client, tmp_path):
-    first = _start(client, _iek_uploads(tmp_path, drop="MOQ")).json()["import_id"]
+    first = _start(client, _corrupt(_iek_uploads(tmp_path), "MOQ")).json()["import_id"]
     _finish(client, first)
     second = _start(client, _iek_uploads(tmp_path)).json()["import_id"]
     _finish(client, second)
@@ -116,3 +125,29 @@ def test_list_returns_newest_first_without_report(client, tmp_path):
     assert [job["import_id"] for job in listed][:2] == [second, first]
     assert all("report" not in job for job in listed)
     assert listed[0]["status"] == "done" and listed[1]["status"] == "failed"
+
+
+def test_single_file_is_completed_from_current_dataset(client, tmp_path):
+    """Менеджер обновляет один файл; остальные пять берутся из уже загруженного набора."""
+    full = _start(client, _iek_uploads(tmp_path))
+    assert full.status_code == 202, full.text
+    assert _finish(client, full.json()["import_id"])["status"] == "done"
+
+    only_season = [f for f in _iek_uploads(tmp_path) if "Сезонность" in f[1][0]]
+    assert len(only_season) == 1
+    response = _start(client, only_season)
+    assert response.status_code == 202, response.text
+    assert len(response.json()["reused_files"]) == 5
+
+    job = _finish(client, response.json()["import_id"])
+    assert job["status"] == "done", job
+    assert len(job["reused_files"]) == 5
+    assert job["report"]["metrics"]["reused_from_previous"] == job["reused_files"]
+
+
+def test_partial_import_without_current_data_lists_missing_kinds(client, tmp_path):
+    client.app.state.container.settings.data_dir = tmp_path / "нет-такой-папки"
+    only_season = [f for f in _iek_uploads(tmp_path) if "Сезонность" in f[1][0]]
+    response = _start(client, only_season)
+    assert response.status_code == 422, response.text
+    assert "ежемесячные продажи" in response.text

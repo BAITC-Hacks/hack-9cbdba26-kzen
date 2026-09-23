@@ -10,7 +10,7 @@ import ReviewScreen from './screens/ReviewScreen'
 import ValidationScreen from './screens/ValidationScreen'
 
 export default function App() {
-  const [screen, setScreen] = useState<1 | 2 | 3 | 4 | 5>(1)
+  const [screen, setScreen] = useState<1 | 2 | 3 | 4 | 5>(2)
   const [skuId, setSkuId] = useState<SkuId | null>(null)
   const [header, setHeader] = useState<AppHeader | null>(null)
   const [recommendations, setRecommendations] = useState<RecommendationsPage | null>(null)

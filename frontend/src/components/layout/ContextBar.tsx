@@ -15,9 +15,9 @@ export default function ContextBar({ header }: Props) {
       <span>Категория: <b>{header.category_filter || 'Все категории'}</b></span>
       <span>Дата расчёта: <b>{dateLabel(header.calc_date)}</b></span>
       <span>Срез данных: <b>{dateLabel(header.data_cut_date)}</b></span>
-      <span>Версия: <b>v{header.order.version}</b></span>
+      <span>Версия: <b>v{header.order.version} · {status}</b></span>
       <span>Роль: <b>{header.role === 'head' ? 'Руководитель закупок' : 'Менеджер закупа'}</b></span>
-      <span>Расчёт: <b>{status}</b></span>
+      <span>Расчёт: <b>{header.calc_at ? 'выполнен' : 'не запускался'}</b></span>
       {header.snapshot_stale && <span className="tag tag-outline">Снимок остатка старше 7 дней</span>}
       {header.calc_stale && <span className="tag tag-outline">Расчёт устарел</span>}
       {header.what_if_active && <span className="tag tag-outline">Сценарий «что если» активен</span>}

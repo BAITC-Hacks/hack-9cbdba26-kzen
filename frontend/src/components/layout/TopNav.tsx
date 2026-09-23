@@ -14,7 +14,7 @@ const SCREENS = [
   { n: 5, label: 'Проверки ТЗ' },
 ]
 
-export default function TopNav({ header, activeScreen, onScreen }: Props) {
+export default function TopNav({ activeScreen, onScreen }: Props) {
   return (
     <nav className="nav app-nav" aria-label="Основная навигация">
       <div className="nav-brand">Электрокомплект <span>Пополнение запасов</span></div>
@@ -31,7 +31,6 @@ export default function TopNav({ header, activeScreen, onScreen }: Props) {
           </button>
         ))}
       </div>
-      <span className="nav-user">{header.user.name}</span>
     </nav>
   )
 }

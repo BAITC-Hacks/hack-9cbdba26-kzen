@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.application.use_cases.narrate import is_grounded
+from app.application.use_cases.narrate import (
+    NarrateOrderLine, has_unsupported_adjustment_claim, is_grounded,
+)
 from app.core.container import Container
+from app.domain.workflow import DraftLine
 from app.infrastructure.cache.memory import MemoryCache
 from app.infrastructure.forecasting.baseline import BaselineForecaster
 from app.infrastructure.forecasting.smoothed import SmoothedForecaster
 from app.infrastructure.llm.openai_compat import build_prompt
+from app.infrastructure.llm.template import TemplateNarrator
 from app.infrastructure.storage.demo_data import build_demo_repository
 from app.main import create_app
 
@@ -78,6 +83,39 @@ def test_prompt_is_about_procurement_not_scoring():
 )
 def test_numbers_must_come_from_calculation(text, ok):
     assert is_grounded(text, CONTEXT) is ok
+
+
+def test_narrative_rejects_adjustments_missing_from_calculation():
+    context = {**CONTEXT, "reasons": []}
+    assert has_unsupported_adjustment_claim("Разовая продажа исключена.", context)
+    assert has_unsupported_adjustment_claim("Спрос восстановлен за месяцы без товара.", context)
+    assert not has_unsupported_adjustment_claim("Свободный остаток исчерпан.", context)
+    assert not has_unsupported_adjustment_claim("Разовая продажа исключена.", CONTEXT)
+    compensated = {**context, "reasons": [{"label": "Компенсация отсутствия товара"}]}
+    assert not has_unsupported_adjustment_claim(
+        "Спрос восстановлен за месяцы без товара.", compensated
+    )
+
+
+def test_template_narrator_uses_russian_decimal_separator():
+    text = TemplateNarrator().narrate({**CONTEXT, "monthly_demand": 0.01})
+    assert "0,01 шт/мес" in text
+    assert "0.01" not in text
+
+
+def test_narrative_falls_back_when_llm_invents_adjustment():
+    line = DraftLine(
+        code="test", name="Позиция", supplier="IEK", article="", moq=1,
+        urgency="normal", recommended=1, quantity=1, explanation="Факт расчёта",
+        monthly_demand=0.01, reasons=(("Средние продажи", "0,03 шт/мес"),),
+    )
+    narrator = NarrateOrderLine(
+        FakeNarrator("Разовая продажа исключена."), MemoryCache(),
+        fallback=TemplateNarrator(),
+    )
+    text, source = asyncio.run(narrator.execute(line))
+    assert "Разовая продажа исключена" not in text
+    assert source.startswith("template")
 
 
 def test_narrative_returns_llm_text_when_grounded(settings):

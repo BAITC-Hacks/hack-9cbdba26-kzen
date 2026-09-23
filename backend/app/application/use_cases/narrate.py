@@ -42,6 +42,24 @@ def is_grounded(text: str, context: dict[str, Any]) -> bool:
     return numbers_in(text) <= allowed
 
 
+def has_unsupported_adjustment_claim(text: str, context: dict[str, Any]) -> bool:
+    """Не показывать заявленную моделью поправку, которой нет в расчёте."""
+    labels = " ".join(
+        str(reason.get("label", "")) for reason in context.get("reasons") or []
+    ).lower()
+    claim = text.lower()
+    one_off_claim = re.search(
+        r"разов\w*.{0,60}исключ\w*|исключ\w*.{0,60}разов\w*", claim
+    )
+    if one_off_claim and "разов" not in labels:
+        return True
+    stockout_claim = re.search(
+        r"восстанов\w*.{0,60}спрос|спрос.{0,60}восстанов\w*|компенсац\w*.{0,60}отсутств",
+        claim,
+    )
+    return bool(stockout_claim and "компенсац" not in labels)
+
+
 def _flatten(value: Any) -> str:
     if isinstance(value, dict):
         return " ".join(_flatten(v) for v in value.values())
@@ -82,6 +100,10 @@ class NarrateOrderLine:
             logger.warning("LLM добавила числа, которых нет в расчёте; текст отброшен",
                            extra={"code": line.code})
             text, source = None, "template (LLM добавила числа, текст отброшен)"
+        elif text and has_unsupported_adjustment_claim(text, context):
+            logger.warning("LLM заявила поправку, которой нет в расчёте; текст отброшен",
+                           extra={"code": line.code})
+            text, source = None, "template (LLM добавила неподтверждённую поправку)"
         elif not text:
             source = "template (LLM недоступна)"
 

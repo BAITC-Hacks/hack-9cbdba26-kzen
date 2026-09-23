@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
+from app.application.use_cases.imports import ImportRegistry
 from app.application.use_cases.workspace import Workspace
 from app.core.config import Settings
 from app.domain.ports import CachePort, ForecasterPort, NarratorPort, SkuRepositoryPort
@@ -32,8 +33,11 @@ class Container:
     drafts: MemoryDraftStore = field(default_factory=MemoryDraftStore)
     # Состояние рабочего места: роль, текущий заказ, настройки расчёта
     workspace: Workspace = field(default_factory=Workspace)
-    # imported — данные партнёра, demo — синтетика на реальных кодах
+    # imported — данные партнёра из папки, uploaded — загружены через интерфейс,
+    # demo — синтетика на реальных кодах
     data_mode: str = "imported"
+    # Задачи импорта выгрузок через API: реестр один на процесс, как и версии
+    imports: ImportRegistry = field(default_factory=ImportRegistry)
 
     @property
     def degraded(self) -> bool:

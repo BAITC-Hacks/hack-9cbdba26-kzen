@@ -78,11 +78,35 @@ class _Draft:
     bulk_orders: tuple[BulkOrderEvent, ...] = ()
 
 
+# Маркер поставщика в пути к файлу: у части файлов партнёра имя поставщика
+# есть только в названии папки, поэтому ищем по всему пути, а не по имени.
+SUPPLIER_MARKERS: dict[str, str] = {"IEK": "iek", "Systeme Electric": "systeme"}
+
+
 def load_dataset(data_dir: Path, config: LoaderConfig | None = None) -> LoadedDataset:
     """Прочитать обе выгрузки и вернуть доменные сущности с аудитом."""
+    return _assemble(discover_supplier_files(data_dir), data_dir, config)
+
+
+def load_supplier_dataset(
+    supplier: str, data_dir: Path, config: LoaderConfig | None = None
+) -> LoadedDataset:
+    """Прочитать выгрузку одного поставщика из каталога, где лежат только его файлы.
+
+    Поставщик известен заранее (например, из формы загрузки), поэтому маркер
+    в пути не нужен и второй поставщик не требуется.
+    """
+    if not data_dir.exists():
+        raise StorageError(f"Каталог данных не найден: {data_dir}")
+    files = _supplier_files(supplier, sorted(data_dir.rglob("*.xlsx")))
+    return _assemble([files], data_dir, config)
+
+
+def _assemble(
+    file_sets: list[SupplierFiles], data_dir: Path, config: LoaderConfig | None
+) -> LoadedDataset:
     config = config or LoaderConfig()
     report = DataQualityReport()
-    file_sets = discover_supplier_files(data_dir)
     report.files = [
         str(path.relative_to(data_dir)) for files in file_sets for path in _paths(files)
     ]
@@ -116,25 +140,30 @@ def discover_supplier_files(data_dir: Path) -> list[SupplierFiles]:
     if not data_dir.exists():
         raise StorageError(f"Каталог данных не найден: {data_dir}")
 
-    result = []
-    for supplier, marker in (("IEK", "iek"), ("Systeme Electric", "systeme")):
-        paths = [path for path in data_dir.rglob("*.xlsx") if marker in str(path).casefold()]
-        result.append(
-            SupplierFiles(
-                supplier=supplier,
-                monthly_sales=_one(paths, "ежемесячные продажи", supplier),
-                monthly_stock=_one(paths, "ежемесячные остатки", supplier),
-                transactions=_one(paths, "динамика продаж", supplier),
-                moq=_one(paths, "moq", supplier),
-                in_transit=_one(
-                    paths,
-                    "путь иэк" if supplier == "IEK" else "товар в пути",
-                    supplier,
-                ),
-                seasonality=_one(paths, "сезонность", supplier),
-            )
+    all_paths = sorted(data_dir.rglob("*.xlsx"))
+    return [
+        _supplier_files(
+            supplier, [path for path in all_paths if marker in str(path).casefold()]
         )
-    return result
+        for supplier, marker in SUPPLIER_MARKERS.items()
+    ]
+
+
+def _supplier_files(supplier: str, paths: list[Path]) -> SupplierFiles:
+    """Разложить xlsx одного поставщика по назначению; каждый тип — ровно один файл."""
+    return SupplierFiles(
+        supplier=supplier,
+        monthly_sales=_one(paths, "ежемесячные продажи", supplier),
+        monthly_stock=_one(paths, "ежемесячные остатки", supplier),
+        transactions=_one(paths, "динамика продаж", supplier),
+        moq=_one(paths, "moq", supplier),
+        in_transit=_one(
+            paths,
+            "путь иэк" if supplier == "IEK" else "товар в пути",
+            supplier,
+        ),
+        seasonality=_one(paths, "сезонность", supplier),
+    )
 
 
 def _one(paths: list[Path], marker: str, supplier: str) -> Path:

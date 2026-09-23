@@ -25,7 +25,7 @@ export interface AppHeader {
   snapshot_age_days: number | null;
   snapshot_stale: boolean;
   what_if_active: boolean;
-  data_mode: 'demo' | 'mixed' | 'imported';
+  data_mode: 'demo' | 'mixed' | 'imported' | 'uploaded';
   data_mode_text: string;
   order: { version: number; revision: number; status: OrderStatus; approved_at: DateTime | null } | null;
   role: Role;
@@ -48,6 +48,8 @@ export interface DataOverview {
     suppliers: Array<{ id: SupplierId; name: string; lead_time_days: number; review_days: number; horizon_days: number }>;
     excess_months: number;
   };
+  /* История загрузок 1С: поле появляется после первого импорта, поэтому опционально. */
+  imports?: ImportJob[];
 }
 
 export interface RecommendationRow {
@@ -180,4 +182,44 @@ export interface OrderCurrent {
 export interface ValidationScenarios {
   passed: number; total: number; summary_text: string;
   items: Array<{ n: number; name: string; expected_text: string | null; actual_text: string; passed: boolean }>;
+}
+
+/* Импорт выгрузок 1С (контракт POST/GET /imports). */
+export type ImportSupplier = 'IEK' | 'Systeme Electric';
+export type ImportStatus = 'running' | 'done' | 'failed';
+export type ImportSeverity = 'info' | 'warning' | 'error';
+
+export interface ImportIssue {
+  code: string;
+  severity: ImportSeverity;
+  message: string;
+  count: number;
+  supplier: string | null;
+}
+
+export interface ImportReport {
+  files: string[];
+  /* Ключи метрик задаёт бэкенд и не гарантирует русские названия — показываем как есть. */
+  metrics: Record<string, unknown>;
+  issues: ImportIssue[];
+}
+
+export interface ImportJob {
+  import_id: string;
+  status: ImportStatus;
+  supplier: string;
+  files: string[];
+  started_at: DateTime;
+  finished_at: DateTime | null;
+  /* В списке (GET /imports) отчёта нет, поэтому поле опционально. */
+  report?: ImportReport | null;
+  error: string | null;
+  applied: boolean;
+}
+
+export interface ImportStarted {
+  import_id: string;
+  status: ImportStatus;
+  supplier: string;
+  files: string[];
 }

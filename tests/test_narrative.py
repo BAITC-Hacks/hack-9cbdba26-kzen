@@ -9,7 +9,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.application.use_cases.narrate import (
-    NarrateOrderLine, has_unsupported_adjustment_claim, is_grounded,
+    NarrateOrderLine,
+    has_unsupported_adjustment_claim,
+    is_grounded,
 )
 from app.core.container import Container
 from app.domain.workflow import DraftLine

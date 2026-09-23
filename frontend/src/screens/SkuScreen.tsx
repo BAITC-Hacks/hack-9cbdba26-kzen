@@ -83,8 +83,15 @@ export default function SkuScreen({ skuId, onBack, onSkuChange, onOrderChanged }
     </div>
   )
 
-  const maxSales = Math.max(...data.chart.months.map(m => Math.max(m.sales, m.restored)), ...data.chart.forecast.map(f => f.qty), 1)
-  const barHeight = (value: number) => Math.max(2, Math.round((value / maxSales) * 100))
+  const maxSales = Math.max(
+    ...data.chart.months.map(m => Math.max(m.sales, Math.max(0, m.sales - m.one_off_excluded) + m.restored)),
+    ...data.chart.forecast.map(f => f.qty),
+    1,
+  )
+  const barHeight = (value: number) => value > 0 ? Math.max(2, Math.round((value / maxSales) * 100)) : 0
+  const restoredMonths = data.chart.months.filter(m => m.restored > 0).length
+  const shownSales = data.chart.months.reduce((sum, m) => sum + m.sales, 0)
+  const formatQty = (value: number) => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(value)
 
   return (
     <div className="page">
@@ -98,7 +105,7 @@ export default function SkuScreen({ skuId, onBack, onSkuChange, onOrderChanged }
         <span className='tag tag-outline'>{data.sku.code_1c}</span>
         <span className='tag tag-outline'>{data.sku.supplier_article}</span>
         <span className='tag tag-outline'>{data.sku.supplier.name}</span>
-        <span className='tag tag-outline'>Кат. {data.sku.category}</span>
+        <span className='tag tag-outline'>{data.sku.category ? `Кат. ${data.sku.category}` : 'Без категории'}</span>
         {data.status === 'order' && <span className='tag tag-accent'>Заказать</span>}
         {data.urgency === 'urgent' && <span className="tag tag-outline">Срочно</span>}
         {data.excess && <span className="tag tag-neutral">Избыточный запас</span>}
@@ -108,33 +115,37 @@ export default function SkuScreen({ skuId, onBack, onSkuChange, onOrderChanged }
 
       <div className="data-two-column">        <div>
           <h2 style={{ marginBottom: 12 }}>История и прогноз</h2>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 120, marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 120, marginBottom: 8, overflowX: 'auto' }}>
             {data.chart.months.map(m => {
-              const val = m.restored > 0 ? m.restored : m.sales
+              const regularSales = Math.max(0, m.sales - m.one_off_excluded)
+              const adjustedDemand = regularSales + m.restored
               return (
-                <div key={m.month} style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', minWidth: 28 }}>
-                  <div title={String(val)} style={{
-                    width: '100%', height: barHeight(val),
-                    background: m.in_base ? 'var(--color-accent)' : m.partial ? 'var(--color-accent-400)' : 'var(--color-neutral-300)',
-                    borderRadius: '2px 2px 0 0',
-                    border: m.restored > 0 ? '2px dashed var(--color-accent-600)' : 'none',
-                  }} />
+                <div key={m.month} title={`${m.month}: продано ${formatQty(m.sales)}, учтено ${formatQty(regularSales)}, восстановлено ${formatQty(m.restored)}${m.one_off_excluded ? `, разовые продажи исключены ${formatQty(m.one_off_excluded)}` : ''}`} style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', minWidth: 28 }}>
+                  <div style={{ width: '100%', height: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 2 }}>
+                    <div style={{ width: '42%', height: barHeight(m.sales), background: 'var(--color-neutral-300)', borderRadius: '2px 2px 0 0' }} />
+                    <div style={{ width: '42%', height: barHeight(adjustedDemand), display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+                      {m.restored > 0 && <div style={{ height: `${(m.restored / adjustedDemand) * 100}%`, background: 'repeating-linear-gradient(135deg, var(--color-accent-400) 0, var(--color-accent-400) 3px, var(--color-accent-100) 3px, var(--color-accent-100) 6px)', border: '1px dashed var(--color-accent-600)', boxSizing: 'border-box' }} />}
+                      {regularSales > 0 && <div style={{ height: `${(regularSales / adjustedDemand) * 100}%`, background: 'var(--color-accent)', borderRadius: m.restored > 0 ? 0 : '2px 2px 0 0' }} />}
+                    </div>
+                  </div>
                   <span style={{ fontSize: 9, color: 'var(--color-neutral-600)', marginTop: 2 }}>{m.label}</span>
                 </div>
               )
             })}
             {data.chart.forecast.map(f => (
               <div key={f.month} style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', minWidth: 28, background: 'var(--color-accent-100)', borderRadius: 2 }}>
-                <div style={{ width: '100%', height: barHeight(f.qty), background: 'var(--color-accent-400)', borderRadius: '2px 2px 0 0' }} />
+                <div title={`${f.month}: прогноз ${formatQty(f.qty)}`} style={{ width: '100%', height: barHeight(f.qty), background: 'var(--color-accent-400)', borderRadius: '2px 2px 0 0' }} />
                 <span style={{ fontSize: 9, color: 'var(--color-accent-700)', marginTop: 2 }}>{f.label}</span>
               </div>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--color-neutral-600)' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 12, height: 8, background: 'var(--color-accent)', display: 'inline-block', borderRadius: 1 }} />В базе</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 12, height: 8, background: 'var(--color-neutral-300)', display: 'inline-block', borderRadius: 1 }} />Не в базе</span>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 11, color: 'var(--color-neutral-600)' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 12, height: 8, background: 'var(--color-neutral-300)', display: 'inline-block', borderRadius: 1 }} />Факт продаж</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 12, height: 8, background: 'var(--color-accent)', display: 'inline-block', borderRadius: 1 }} />Регулярные продажи</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 12, height: 8, background: 'repeating-linear-gradient(135deg, var(--color-accent-400) 0, var(--color-accent-400) 3px, var(--color-accent-100) 3px, var(--color-accent-100) 6px)', border: '1px dashed var(--color-accent-600)', display: 'inline-block', borderRadius: 1 }} />Оценка по нулевому/пустому остатку</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 12, height: 8, background: 'var(--color-accent-100)', border: '1px solid var(--color-accent-400)', display: 'inline-block', borderRadius: 1 }} />Прогноз</span>
           </div>
+          {restoredMonths > 0 && <p className="tiny" style={{ marginTop: 8 }}>За показанный период фактически продано {formatQty(shownSales)} шт. Спрос оценён в {restoredMonths} из {data.chart.months.length} месяцев. Месяцев с нулевым/пустым остатком за всю историю: {data.stockouts?.length ?? 0}. Оценку нужно проверить по исходным остаткам.</p>}
 
           <div style={{ marginTop: 16 }}>
             <h3 style={{ fontSize: 13, marginBottom: 8, fontFamily: 'var(--font-body)', fontWeight: 600 }}>Параметры спроса</h3>
@@ -151,9 +162,12 @@ export default function SkuScreen({ skuId, onBack, onSkuChange, onOrderChanged }
 
           <div className="page-section">
             <h3 className="card-title" style={{ fontSize: 18, marginBottom: 8 }}>Поправки спроса</h3>
-            <p className="tiny">Разовые продажи и периоды отсутствия товара показываются по расчёту. Подтверждение периодов выполняется в источнике данных.</p>
+            <p className="tiny">Разовые продажи и месяцы с нулевым или пустым начальным остатком показываются по расчёту. Подтверждение периодов выполняется в источнике данных.</p>
             {data.events?.map(event => <div className="blueprint panel" style={{ marginTop: 8 }} key={event.id}><strong>{event.title_text}</strong><p className="tiny" style={{ marginTop: 4 }}>{event.note_text}</p></div>)}
-            {data.stockouts?.map(item => <div className="blueprint panel" style={{ marginTop: 8 }} key={item.id}><strong>{item.title_text}</strong><p className="tiny" style={{ marginTop: 4 }}>{item.note_text}</p></div>)}
+            {!!data.stockouts?.length && <details style={{ marginTop: 12 }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Месяцы с нулевым/пустым остатком ({data.stockouts.length})</summary>
+              {data.stockouts.map(item => <div className="blueprint panel" style={{ marginTop: 8 }} key={item.id}><strong>{item.title_text}</strong><p className="tiny" style={{ marginTop: 4 }}>{item.note_text}</p></div>)}
+            </details>}
             {!data.events?.length && !data.stockouts?.length && <p className="muted" style={{ marginTop: 8 }}>Поправки для этой позиции не применялись.</p>}
           </div>
 
@@ -165,7 +179,7 @@ export default function SkuScreen({ skuId, onBack, onSkuChange, onOrderChanged }
                 <div style={{ fontSize: 11, color: 'var(--color-neutral-600)' }}>свободно · {data.stock.cover_text}</div>
               </div>
               <div className="blueprint" style={{ padding: '8px 12px', flex: 1 }}>
-                <div style={{ fontSize: 20, fontFamily: 'var(--font-heading)', fontWeight: 600 }}>{data.stock.reserve}</div>
+                <div style={{ fontSize: 20, fontFamily: 'var(--font-heading)', fontWeight: 600 }}>{data.stock.reserve ?? '—'}</div>
                 <div style={{ fontSize: 11, color: 'var(--color-neutral-600)' }}>в резерве</div>
               </div>
             </div>
@@ -177,7 +191,7 @@ export default function SkuScreen({ skuId, onBack, onSkuChange, onOrderChanged }
                     <tr key={ib.id}>
                       <td>{ib.doc_text}</td>
                       <td>{new Intl.NumberFormat('ru-RU').format(ib.qty)}</td>
-                      <td>{ib.eta} <span style={{ color: 'var(--color-neutral-500)' }}>({ib.where_text})</span></td>
+                      <td>{ib.eta ?? '—'} <span style={{ color: 'var(--color-neutral-500)' }}>({ib.where_text})</span></td>
                       <td>{ib.counted ? <span className='tag tag-accent'>Да</span> : <span className='tag tag-neutral'>Нет</span>}</td>
                     </tr>
                   ))}

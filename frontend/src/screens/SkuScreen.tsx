@@ -21,7 +21,7 @@ export default function SkuScreen({ skuId, onBack, onSkuChange }: Props) {
     setSaving(true)
     setError('')
     try {
-      const payload = action === 'set_manual_qty' ? { action, qty: Number(qty), reason: reason.trim(), order_version: data.header.order.version } : { action, order_version: data.header.order.version }
+      const payload = action === 'set_manual_qty' ? { action, qty: Number(qty), reason: reason.trim(), order_version: data.header.order?.version } : { action, order_version: data.header.order?.version }
       await skuAction(skuId, payload)
       setData(await getSkuExplanation(skuId))
       setQty('')

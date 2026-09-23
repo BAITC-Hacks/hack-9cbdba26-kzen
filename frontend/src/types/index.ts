@@ -27,7 +27,7 @@ export interface AppHeader {
   what_if_active: boolean;
   data_mode: 'demo' | 'mixed' | 'imported';
   data_mode_text: string;
-  order: { version: number; status: OrderStatus; approved_at: DateTime | null };
+  order: { version: number; status: OrderStatus; approved_at: DateTime | null } | null;
   role: Role;
   user: { id: string; name: string };
 }

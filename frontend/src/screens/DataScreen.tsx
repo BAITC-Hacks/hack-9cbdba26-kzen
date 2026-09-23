@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import type { AppHeader, DataOverview } from '../types'
 import { getDataOverview, resetSession, saveSettings } from '../api/client'
 
-interface Props { header: AppHeader; onCalculate: () => Promise<void> }
+interface Props { header: AppHeader; onCalculate: () => Promise<void>; onReset: (header: AppHeader) => void }
 
 function Corners() {
   return <><i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" /></>
 }
 
-export default function DataScreen({ header, onCalculate }: Props) {
+export default function DataScreen({ header, onCalculate, onReset }: Props) {
   const [overview, setOverview] = useState<DataOverview | null>(null)
   const [settings, setSettings] = useState<DataOverview['settings'] | null>(null)
   const [saving, setSaving] = useState(false)
@@ -33,10 +33,11 @@ export default function DataScreen({ header, onCalculate }: Props) {
     if (!window.confirm('Сбросить расчёт, правки и версии текущей сессии?')) return
     setSaving(true)
     try {
-      await resetSession()
+      const result = await resetSession()
       const data = await getDataOverview()
       setOverview(data)
       setSettings(data.settings)
+      onReset(result.header)
       setMessage('Сессия сброшена')
     } catch (error) { setMessage(`Не удалось сбросить сессию: ${String(error)}`) }
     finally { setSaving(false) }

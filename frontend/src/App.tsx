@@ -16,7 +16,7 @@ export default function App() {
   const [recommendations, setRecommendations] = useState<RecommendationsPage | null>(null)
 
   useEffect(() => {
-    getSession().then(setHeader)
+    getSession().then(session => setHeader(current => current ?? session))
     searchRecommendations({}).then(d => {
       setRecommendations(d)
       setHeader(d.header)
@@ -36,7 +36,14 @@ export default function App() {
     setScreen(2)
   }
 
-  if (!header || !recommendations) {
+  function openScreen(next: number) {
+    if (next === 2 && !recommendations) {
+      searchRecommendations({}).then(result => { setRecommendations(result); setHeader(result.header) })
+    }
+    setScreen(next as 1 | 2 | 3 | 4 | 5)
+  }
+
+  if (!header) {
     return (
       <div style={{ padding: 40, fontFamily: 'var(--font-body)', color: 'var(--color-neutral-600)' }}>
         Загрузка…
@@ -46,18 +53,19 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <TopNav header={header} activeScreen={screen} onScreen={n => setScreen(n as 1 | 2 | 3 | 4 | 5)} />
+      <TopNav header={header} activeScreen={screen} onScreen={openScreen} />
       <ContextBar header={header} />
       <main style={{ flex: 1 }}>
         {screen === 1 && (
-          <DataScreen header={header} onCalculate={handleCalculate} />
+          <DataScreen header={header} onCalculate={handleCalculate} onReset={resetHeader => { setHeader(resetHeader); setRecommendations(null); setScreen(1) }} />
         )}
-        {screen === 2 && (
+        {screen === 2 && recommendations && (
           <RecommendationsScreen
             data={recommendations}
             onSkuClick={handleSkuClick}
           />
         )}
+        {screen === 2 && !recommendations && <div className="page muted">Загрузка рекомендаций…</div>}
         {screen === 3 && (
           <SkuScreen key={skuId} skuId={skuId} onBack={() => setScreen(2)} onSkuChange={setSkuId} />
         )}

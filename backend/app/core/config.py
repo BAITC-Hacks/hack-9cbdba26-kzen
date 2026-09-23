@@ -51,12 +51,12 @@ class Settings(BaseSettings):
     # --- текстовые объяснения (необязательный блок) ---
     # none     — ручка объяснений выключена
     # template — текст собирается шаблоном, без внешних сервисов
-    # nvidia   — внешняя модель по протоколу OpenAI (сейчас OpenAI; имя историческое),
+    # openai   — внешняя модель по протоколу OpenAI (OpenAI, NIM, Groq, Ollama — только адрес),
     #            с откатом на шаблон при сбое
-    narrator_backend: Literal["none", "template", "nvidia"] = "template"
-    nvidia_api_key: str = ""
-    nvidia_base_url: str = "https://api.openai.com/v1"
-    nvidia_model: str = "gpt-4o-mini"
+    narrator_backend: Literal["none", "template", "openai"] = "template"
+    openai_api_key: str = ""
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_model: str = "gpt-4o-mini"
     narrator_timeout: float = 8.0
     narrator_cache_ttl: int = 3600
     domain_hint: str = ""  # «отток абонентов связи» — помогает LLM говорить на языке кейса

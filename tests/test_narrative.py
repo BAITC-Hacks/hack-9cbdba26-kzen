@@ -12,7 +12,7 @@ from app.core.container import Container
 from app.infrastructure.cache.memory import MemoryCache
 from app.infrastructure.forecasting.baseline import BaselineForecaster
 from app.infrastructure.forecasting.smoothed import SmoothedForecaster
-from app.infrastructure.llm.nvidia_nim import build_prompt
+from app.infrastructure.llm.openai_compat import build_prompt
 from app.infrastructure.storage.demo_data import build_demo_repository
 from app.main import create_app
 

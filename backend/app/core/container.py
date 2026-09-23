@@ -144,12 +144,12 @@ def _build_narrator(settings: Settings, warnings: list[str]) -> NarratorPort | N
         return TemplateNarrator()
 
     try:
-        from app.infrastructure.llm.nvidia_nim import NvidiaNarrator
+        from app.infrastructure.llm.openai_compat import OpenAINarrator
 
-        return NvidiaNarrator(
-            settings.nvidia_api_key,
-            base_url=settings.nvidia_base_url,
-            model=settings.nvidia_model,
+        return OpenAINarrator(
+            settings.openai_api_key,
+            base_url=settings.openai_base_url,
+            model=settings.openai_model,
             timeout=settings.narrator_timeout,
         )
     except Exception as exc:

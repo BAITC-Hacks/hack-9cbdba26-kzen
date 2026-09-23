@@ -84,6 +84,7 @@ export default function SkuScreen({ skuId, onBack, onSkuChange, onOrderChanged }
   )
 
   const maxSales = Math.max(...data.chart.months.map(m => Math.max(m.sales, m.restored)), ...data.chart.forecast.map(f => f.qty), 1)
+  const barHeight = (value: number) => Math.max(2, Math.round((value / maxSales) * 100))
 
   return (
     <div className="page">
@@ -110,11 +111,10 @@ export default function SkuScreen({ skuId, onBack, onSkuChange, onOrderChanged }
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 120, marginBottom: 8 }}>
             {data.chart.months.map(m => {
               const val = m.restored > 0 ? m.restored : m.sales
-              const h = Math.round((val / maxSales) * 100)
               return (
-                <div key={m.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 28 }}>
+                <div key={m.month} style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', minWidth: 28 }}>
                   <div title={String(val)} style={{
-                    width: '100%', height: h + '%', minHeight: 2,
+                    width: '100%', height: barHeight(val),
                     background: m.in_base ? 'var(--color-accent)' : m.partial ? 'var(--color-accent-400)' : 'var(--color-neutral-300)',
                     borderRadius: '2px 2px 0 0',
                     border: m.restored > 0 ? '2px dashed var(--color-accent-600)' : 'none',
@@ -124,8 +124,8 @@ export default function SkuScreen({ skuId, onBack, onSkuChange, onOrderChanged }
               )
             })}
             {data.chart.forecast.map(f => (
-              <div key={f.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 28, background: 'var(--color-accent-100)', borderRadius: 2 }}>
-                <div style={{ width: '100%', height: Math.round((f.qty / maxSales) * 100) + '%', minHeight: 2, background: 'var(--color-accent-400)', borderRadius: '2px 2px 0 0' }} />
+              <div key={f.month} style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', minWidth: 28, background: 'var(--color-accent-100)', borderRadius: 2 }}>
+                <div style={{ width: '100%', height: barHeight(f.qty), background: 'var(--color-accent-400)', borderRadius: '2px 2px 0 0' }} />
                 <span style={{ fontSize: 9, color: 'var(--color-accent-700)', marginTop: 2 }}>{f.label}</span>
               </div>
             ))}

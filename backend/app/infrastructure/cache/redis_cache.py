@@ -17,7 +17,9 @@ class RedisCache:
     def __init__(self, url: str, prefix: str = "app") -> None:
         from redis.asyncio import from_url
 
-        self._client = from_url(url, encoding=None, decode_responses=False)
+        # decode_responses=False уже сохраняет байты; encoding=None ломает ping
+        # в новых версиях redis-py ещё до первого обращения к кэшу.
+        self._client = from_url(url, decode_responses=False)
         self._prefix = prefix
 
     @property

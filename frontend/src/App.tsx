@@ -8,9 +8,13 @@ import RecommendationsScreen from './screens/RecommendationsScreen'
 import SkuScreen from './screens/SkuScreen'
 import ReviewScreen from './screens/ReviewScreen'
 import ValidationScreen from './screens/ValidationScreen'
+import Icon from './components/ui/Icon'
+import { Loading, Notice } from './components/ui'
+
+type Screen = 1 | 2 | 3 | 4 | 5
 
 export default function App() {
-  const [screen, setScreen] = useState<1 | 2 | 3 | 4 | 5>(2)
+  const [screen, setScreen] = useState<Screen>(2)
   const [skuId, setSkuId] = useState<SkuId | null>(null)
   const [header, setHeader] = useState<AppHeader | null>(null)
   const [recommendations, setRecommendations] = useState<RecommendationsPage | null>(null)
@@ -18,7 +22,12 @@ export default function App() {
   const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
-    getSession().then(session => setHeader(current => current ?? session)).catch(error => setLoadError(String(error)))
+    getSession().then(session => {
+      setHeader(current => current ?? session)
+      // Если расчёта ещё не было, пользователю нечего смотреть в рекомендациях:
+      // ведём его на первый шаг, где есть кнопка «Рассчитать».
+      if (!session.calc_at) setScreen(1)
+    }).catch(error => setLoadError(String(error)))
     searchRecommendations({}).then(d => {
       setRecommendations(d)
       setHeader(d.header)
@@ -52,7 +61,7 @@ export default function App() {
     if (next === 1 || next === 5) {
       getSession().then(setHeader).catch(error => setLoadError(String(error)))
     }
-    setScreen(next as 1 | 2 | 3 | 4 | 5)
+    setScreen(next as Screen)
   }
 
   function handleOrderChanged(updatedHeader: AppHeader) {
@@ -62,17 +71,20 @@ export default function App() {
 
   if (!header) {
     return (
-      <div style={{ padding: 40, fontFamily: 'var(--font-body)', color: 'var(--color-neutral-600)' }}>
-        {loadError || 'Загрузка…'}
+      <div className="app-loading">
+        <div className="app-loading-box">
+          <div className="brand-mark"><Icon name="bolt" size={18} /></div>
+          {loadError ? <Notice tone="danger" role="alert">{loadError}</Notice> : <Loading text="Подключаемся к сервису…" />}
+        </div>
       </div>
     )
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="app-shell">
       <TopNav header={header} activeScreen={screen} onScreen={openScreen} />
       <ContextBar header={header} />
-      <main style={{ flex: 1 }}>
+      <main className="app-main">
         {screen === 1 && (
           <DataScreen header={header} onCalculate={handleCalculate} onReset={resetHeader => { setHeader(resetHeader); setRecommendations(null); setAgentTrace([]); setScreen(1) }} />
         )}
@@ -82,9 +94,12 @@ export default function App() {
             agentTrace={agentTrace}
             onSkuClick={handleSkuClick}
             onHeaderChange={setHeader}
+            onGoToData={() => openScreen(1)}
           />
         )}
-        {screen === 2 && !recommendations && <div className="page muted">{loadError || 'Загрузка рекомендаций…'}</div>}
+        {screen === 2 && !recommendations && (
+          <div className="page">{loadError ? <Notice tone="danger" role="alert">{loadError}</Notice> : <Loading text="Загружаем рекомендации…" />}</div>
+        )}
         {screen === 3 && (
           <SkuScreen key={skuId} skuId={skuId} onBack={() => openScreen(2)} onSkuChange={setSkuId} onOrderChanged={handleOrderChanged} />
         )}

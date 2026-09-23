@@ -51,11 +51,12 @@ class Settings(BaseSettings):
     # --- текстовые объяснения (необязательный блок) ---
     # none     — ручка объяснений выключена
     # template — текст собирается шаблоном, без внешних сервисов
-    # nvidia   — NVIDIA NIM (build.nvidia.com), с откатом на шаблон при сбое
+    # nvidia   — внешняя модель по протоколу OpenAI (сейчас OpenAI; имя историческое),
+    #            с откатом на шаблон при сбое
     narrator_backend: Literal["none", "template", "nvidia"] = "template"
     nvidia_api_key: str = ""
-    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
-    nvidia_model: str = "meta/llama-3.3-70b-instruct"
+    nvidia_base_url: str = "https://api.openai.com/v1"
+    nvidia_model: str = "gpt-4o-mini"
     narrator_timeout: float = 8.0
     narrator_cache_ttl: int = 3600
     domain_hint: str = ""  # «отток абонентов связи» — помогает LLM говорить на языке кейса

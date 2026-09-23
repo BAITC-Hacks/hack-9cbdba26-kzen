@@ -1,9 +1,10 @@
-"""Адаптер NVIDIA NIM (build.nvidia.com).
+"""Адаптер к любому провайдеру с протоколом OpenAI Chat Completions.
 
-API совместим с OpenAI Chat Completions, поэтому отдельный SDK не нужен —
-хватает httpx. Базовый адрес https://integrate.api.nvidia.com/v1, ключ вида
-nvapi-... передаётся в заголовке Authorization. Тот же адаптер с другим
-base_url работает с локальной моделью (Ollama, vLLM) внутри контура партнёра.
+Исторически написан под NVIDIA NIM, отсюда имя файла и переменных NVIDIA_*.
+Провайдер задаётся адресом и моделью в .env: сейчас это OpenAI
+(https://api.openai.com/v1, gpt-4o-mini), тот же код работает с NIM, Groq и
+локальной моделью (Ollama, vLLM) внутри контура партнёра. Отдельный SDK не
+нужен — хватает httpx, ключ передаётся в заголовке Authorization.
 
 Где это уместно в проекте. LLM здесь не принимает решение и не считает:
 количество считает расчётное ядро за миллисекунды. LLM только переводит
@@ -55,20 +56,20 @@ URGENCY_TEXT = {
 
 
 class NvidiaNarrator:
-    """Обоснование строки заказа текстом через NVIDIA NIM."""
+    """Обоснование строки заказа текстом через внешнюю модель (протокол OpenAI)."""
 
     def __init__(
         self,
         api_key: str,
         *,
-        base_url: str = "https://integrate.api.nvidia.com/v1",
-        model: str = "meta/llama-3.3-70b-instruct",
+        base_url: str = "https://api.openai.com/v1",
+        model: str = "gpt-4o-mini",
         timeout: float = 8.0,
         max_tokens: int = 260,
         temperature: float = 0.2,
     ) -> None:
         if not api_key:
-            raise ValueError("Нужен ключ NVIDIA (nvapi-...). Возьмите его на build.nvidia.com")
+            raise ValueError("Нужен ключ провайдера LLM в NVIDIA_API_KEY (OpenAI: sk-...)")
 
         self._model = model
         self._max_tokens = max_tokens
@@ -84,7 +85,9 @@ class NvidiaNarrator:
 
     @property
     def backend(self) -> str:
-        return f"nvidia:{self._model}"
+        # Подпись источника видит менеджер в карточке: имя модели важнее имени
+        # провайдера, тем более что по этому адаптеру ходят и OpenAI, и NIM, и Ollama
+        return f"llm:{self._model}"
 
     def narrate(self, context: dict[str, Any]) -> str | None:
         """Вернуть текст обоснования или None, если сервис недоступен.
@@ -110,7 +113,7 @@ class NvidiaNarrator:
             payload = response.json()
             return payload["choices"][0]["message"]["content"].strip()
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
-            logger.warning("NVIDIA NIM недоступен: %s", exc)
+            logger.warning("LLM недоступна: %s", exc)
             return None
 
     def close(self) -> None:

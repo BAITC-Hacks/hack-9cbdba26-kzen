@@ -80,7 +80,8 @@ def assess(sku: Sku, line: OrderLine, cleaned: CleanedDemand) -> Assessment:
     if sku.history and cleaned.stockout_months / len(sku.history) > STOCKOUT_SHARE_LIMIT:
         issues.append(Issue(
             "frequent_stockout",
-            f"Товара не было {cleaned.stockout_months} из {len(sku.history)} мес — "
+            f"В {cleaned.stockout_months} из {len(sku.history)} мес начальный остаток "
+            "нулевой или не указан — "
             "спрос восстановлен оценкой",
             blocking=False,
         ))

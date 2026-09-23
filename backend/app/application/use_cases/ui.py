@@ -445,8 +445,12 @@ def explanation(c: Container, sku_id: str) -> dict[str, Any]:
         "id": f"s{p.month.strftime('%Y-%m')}", "month": p.month.strftime("%Y-%m"),
         "availability": 0.0, "origin": origin, "removable": False,
         "title_text": f"{MONTH_LABELS[p.month.month - 1].lower()} {p.month.year} — "
-                      "остаток на начало 0",
-        "note_text": f"Продано {p.sold:g}, спрос восстановлен до {cp.sold:.0f}",
+                      "начальный остаток нулевой или не указан",
+        "note_text": (
+            f"Продано {p.sold:g}, спрос восстановлен оценкой до {cp.sold:.1f}"
+            if cp.sold > p.sold else
+            f"Продано {p.sold:g}, корректировка спроса не потребовалась"
+        ),
     } for p, cp in zip(sku.history, cleaned.points, strict=True) if p.stockout]
 
     computed = _computed(line)

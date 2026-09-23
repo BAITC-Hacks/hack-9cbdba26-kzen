@@ -147,16 +147,29 @@ class RulesPolicy:
             return []
 
         flagged: dict[str, list[str]] = observation.get("_flagged", {})
-        # Сначала самые дорогие ошибки: крупные заказы и крупные выбросы
-        suspicious = sorted(
-            set(flagged.get("large_order", [])) | set(flagged.get("one_off_suspected", [])),
-            key=lambda c: -state.lines[c].quantity,
-        )[:MAX_DEEP_REVIEWS]
+        large = set(flagged.get("large_order", []))
+        one_off = set(flagged.get("one_off_suspected", []))
+
+        # Что разбирать первым. Позиции, которые пойдут в заказ, важнее тех, где
+        # заказа нет; среди них — где есть номер накладной (менеджер проверит в 1С)
+        # и где разовые продажи составляют наибольшую долю истории. Крупные
+        # заказы ранжируются по количеству: там ошибка дороже всего.
+        def one_off_rank(code: str) -> tuple[bool, bool, float]:
+            sku, line = state.skus[code], state.lines[code]
+            return (not line.needed, not sku.bulk_orders,
+                    -one_off_share(sku, state.cleaned[code]))
+
+        suspicious: list[str] = []
+        for code in sorted(one_off, key=one_off_rank) + sorted(
+            large, key=lambda c: -state.lines[c].quantity
+        ):
+            if code not in suspicious:
+                suspicious.append(code)
 
         actions: list[Action] = []
-        for code in suspicious:
+        for code in suspicious[:MAX_DEEP_REVIEWS]:
             actions.append(Action("review_one_off", code))
-            if code in flagged.get("large_order", []):
+            if code in large:
                 actions.append(Action("check_supplier_constraints", code))
         return actions
 

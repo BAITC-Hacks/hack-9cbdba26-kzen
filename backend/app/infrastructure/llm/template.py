@@ -31,7 +31,8 @@ class TemplateNarrator:
         demand = context.get("monthly_demand")
         coverage = context.get("coverage_months")
         if demand:
-            head += f" Спрос {demand} шт/мес, текущего запаса хватит на {coverage} мес."
+            head += (f" Прогноз на месяц поставки {demand} шт/мес, "
+                     f"текущего запаса хватит на {coverage} мес.")
 
         reasons = context.get("reasons") or []
         if reasons:

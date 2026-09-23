@@ -8,6 +8,21 @@
 Кейс, карта данных и ловушки в файлах партнёра — в `CASE.md`.
 Статус задач команды — в `docs/CHECKLIST.md`.
 
+**Артефакты по п. 10 ТЗ** (методология, алгоритм исключения выбросов, запуск):
+
+| Что требует ТЗ | Где |
+|---|---|
+| методология расчёта | раздел «Логика расчёта» ниже и `docs/methodology.md` (формулы, нормализация, ограничения) |
+| алгоритм исключения выбросов | раздел «Как исключаются разовые крупные продажи» |
+| инструкция запуска | раздел «Запуск за две минуты» |
+| проверки Must have вживую | `GET /api/v1/validation/scenarios`, экран «Проверки ТЗ», `make test` |
+
+**Где здесь языковая модель.** Только в обосновании словами
+(`GET /api/v1/skus/{sku_id}/narrative`): LLM формулирует, а сервис проверяет, что каждое
+число в тексте есть в расчёте, иначе показывает шаблон. Количество LLM не считает никогда.
+Включается в `.env`: `NARRATOR_BACKEND=nvidia` и ключ `NVIDIA_API_KEY` с build.nvidia.com;
+без ключа или без сети сервис сам откатывается на шаблон.
+
 ## Что внутри
 
 **Расчётное ядро, а не ML.** Статистика, сезонность, тренд, выбросы, кратность.
@@ -198,7 +213,7 @@ async def my_setup(settings):
 | все | `GET /session`, `PUT /session/role` (менеджер / руководитель), `POST /session/reset` |
 | 01 данные | `GET /data/overview`, `PATCH /settings`, `POST /calculations` (запускает агента) |
 | 02 рекомендации | `POST /recommendations/search` — поиск, фильтры, страницы, «что если» |
-| 03 позиция | `GET /skus/{sku_id}/explanation`, `POST /skus/{sku_id}/actions` |
+| 03 позиция | `GET /skus/{sku_id}/explanation`, `GET /skus/{sku_id}/narrative` (обоснование словами, LLM или шаблон), `POST /skus/{sku_id}/actions` |
 | 04 заказ | `GET /orders/current`, `POST /orders/current/actions` (submit / approve / reject), `PATCH /orders/current/export-settings`, `POST /orders/export`, `GET /orders/versions`, `GET /orders/versions/{v}/diff`, `GET /audit-log` |
 | 05 проверки | `GET /validation/scenarios` |
 
@@ -274,8 +289,9 @@ async def my_setup(settings):
 
 - Товар в пути без дат поступления: what-if задержки вычитает партию из пути,
   а не сдвигает ETA. Даты есть в `Путь ИЭК` (заголовки «поступление до …»).
-- LLM-политика агента и валидатор чисел в тексте LLM.
-- Интерфейс.
+- LLM-политика агента (правила остаются запасным вариантом).
+- Лента шагов агента и обоснование словами на экранах — контракт в
+  `docs/FRONTEND_AGENT_TRACE.md`.
 
 ## Данные и расчёт без HTTP
 

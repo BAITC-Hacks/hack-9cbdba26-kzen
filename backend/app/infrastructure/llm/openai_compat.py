@@ -1,6 +1,5 @@
 """Адаптер к любому провайдеру с протоколом OpenAI Chat Completions.
 
-Исторически написан под NVIDIA NIM, отсюда имя файла и переменных NVIDIA_*.
 Провайдер задаётся адресом и моделью в .env: сейчас это OpenAI
 (https://api.openai.com/v1, gpt-4o-mini), тот же код работает с NIM, Groq и
 локальной моделью (Ollama, vLLM) внутри контура партнёра. Отдельный SDK не
@@ -55,7 +54,7 @@ URGENCY_TEXT = {
 }
 
 
-class NvidiaNarrator:
+class OpenAINarrator:
     """Обоснование строки заказа текстом через внешнюю модель (протокол OpenAI)."""
 
     def __init__(
@@ -69,7 +68,7 @@ class NvidiaNarrator:
         temperature: float = 0.2,
     ) -> None:
         if not api_key:
-            raise ValueError("Нужен ключ провайдера LLM в NVIDIA_API_KEY (OpenAI: sk-...)")
+            raise ValueError("Нужен ключ провайдера LLM в OPENAI_API_KEY (OpenAI: sk-...)")
 
         self._model = model
         self._max_tokens = max_tokens

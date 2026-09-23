@@ -66,7 +66,7 @@ class NarrateOrderLine:
 
     async def execute(self, line: DraftLine) -> tuple[str, str]:
         """Вернуть (текст, источник). Источник нужен интерфейсу и защите:
-        «nvidia», «template» или «template (числа LLM не сошлись)»."""
+        «llm:<модель>», «template» или «template (числа LLM не сошлись)»."""
         key = f"narrative:{self._narrator.backend}:{line.code}:{line.quantity}"
         cached = await self._cache.get(key)
         if cached is not None:

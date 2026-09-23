@@ -12,7 +12,7 @@ export const mockHeader: AppHeader = {
   what_if_active: false,
   data_mode: 'demo',
   data_mode_text: 'Позиции и числа по SKU — синтетика; объёмы выгрузок — реальные',
-  order: { version: 3, status: 'draft', approved_at: null },
+  order: { version: 3, revision: 1, status: 'draft', approved_at: null },
   role: 'manager',
   user: { id: 'u1', name: 'Айгерим С.' },
 };

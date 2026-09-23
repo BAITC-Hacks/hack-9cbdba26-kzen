@@ -1,4 +1,4 @@
-import type { RecommendationsPage, SkuExplanation, OrderCurrent, AppHeader, ValidationScenarios, DataOverview } from '../types'
+import type { AgentTraceEvent, RecommendationsPage, SkuExplanation, OrderCurrent, AppHeader, ValidationScenarios, DataOverview } from '../types'
 
 const BASE = '/api/v1'
 
@@ -43,12 +43,17 @@ export async function resetSession(): Promise<{ header: AppHeader }> {
 export async function searchRecommendations(query: {
   q?: string; supplier_id?: string | null; category?: string | null;
   status?: string | null; sort?: string; what_if?: { delay_days: number; demand_pct: number };
+  page_size?: number; page?: Record<string, number>;
 }): Promise<RecommendationsPage> {
   return post('/recommendations/search', query)
 }
 
 export async function getSkuExplanation(skuId: string): Promise<SkuExplanation> {
   return get(`/skus/${encodeURIComponent(skuId)}/explanation`)
+}
+
+export async function getSkuNarrative(skuId: string): Promise<{ text: string; source: string }> {
+  return get(`/skus/${encodeURIComponent(skuId)}/narrative`)
 }
 
 export async function getOrderCurrent(): Promise<OrderCurrent> {
@@ -59,15 +64,15 @@ export async function getValidation(): Promise<ValidationScenarios> {
   return get('/validation/scenarios')
 }
 
-export async function runCalculation(): Promise<unknown> {
+export async function runCalculation(): Promise<{ header: AppHeader; order: OrderCurrent; agent: { version: number; trace: AgentTraceEvent[] }; toast: string }> {
   return post('/calculations')
 }
 
-export async function skuAction(skuId: string, payload: Record<string, unknown>): Promise<unknown> {
+export async function skuAction(skuId: string, payload: Record<string, unknown>): Promise<{ header: AppHeader; sku: SkuExplanation; order: OrderCurrent; toast: string }> {
   return post(`/skus/${encodeURIComponent(skuId)}/actions`, payload)
 }
 
-export async function orderAction(payload: Record<string, unknown>): Promise<unknown> {
+export async function orderAction(payload: Record<string, unknown>): Promise<{ header: AppHeader; order: OrderCurrent; toast: string }> {
   return post('/orders/current/actions', payload)
 }
 
@@ -99,8 +104,8 @@ export async function getOrderVersions(): Promise<Array<{ version: number; appro
   return get('/orders/versions')
 }
 
-export async function getAuditLog(): Promise<{ items: Array<{ version: number; text: string; user_text: string; at: string }> }> {
-  return get('/audit-log')
+export async function getAuditLog(page = 1, pageSize = 50): Promise<{ items: Array<{ version: number; text: string; user_text: string; at: string }>; page: number; page_size: number; total: number; pages: number }> {
+  return get(`/audit-log?page=${page}&page_size=${pageSize}`)
 }
 
 export async function getVersionDiff(version: number): Promise<{ title_text: string; rows: Array<{ code_1c: string; name: string; in_version_text: string; current_text: string }> }> {

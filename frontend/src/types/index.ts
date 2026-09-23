@@ -22,12 +22,12 @@ export interface AppHeader {
   data_cut_date: string;
   calc_at: DateTime | null;
   calc_stale: boolean;
-  snapshot_age_days: number;
+  snapshot_age_days: number | null;
   snapshot_stale: boolean;
   what_if_active: boolean;
   data_mode: 'demo' | 'mixed' | 'imported';
   data_mode_text: string;
-  order: { version: number; status: OrderStatus; approved_at: DateTime | null } | null;
+  order: { version: number; revision: number; status: OrderStatus; approved_at: DateTime | null } | null;
   role: Role;
   user: { id: string; name: string };
 }
@@ -56,12 +56,12 @@ export interface RecommendationRow {
   code_1c: string;
   supplier_article: string;
   name: string;
-  category: string;
+  category: string | null;
   unit: string;
   purchase_unit: string;
   unit_text: string;
   free_stock: number | null;
-  inbound: Array<{ qty: number; eta: string }>;
+  inbound: Array<{ qty: number; eta: string | null }>;
   recommended_qty: number | null;
   final_qty: number | null;
   manual: boolean;
@@ -94,6 +94,16 @@ export interface CalcStep {
   large?: boolean;
 }
 
+export interface AgentTraceEvent {
+  seq: number;
+  type: string;
+  status: 'ok' | 'warning' | 'blocked' | 'waiting';
+  title: string;
+  tool: string;
+  sku: string;
+  facts: Record<string, unknown>;
+}
+
 export interface SkuExplanation {
   header: AppHeader;
   nav: { prev_sku_id: SkuId | null; next_sku_id: SkuId | null };
@@ -102,7 +112,7 @@ export interface SkuExplanation {
     supplier: Supplier;
     code_1c: string;
     supplier_article: string;
-    category: string;
+    category: string | null;
     name: string;
     unit: string;
     purchase_unit: string;
@@ -125,10 +135,11 @@ export interface SkuExplanation {
     trend_estimate: number; trend_estimate_text: string;
   };
   steps: CalcStep[];
+  agent_trace?: AgentTraceEvent[];
   explanation_text: string;
   params: { lead_time_days: number; review_days: number; season: number | null; overridden: boolean };
-  stock: { free: number | null; free_manual: boolean; reserve: number; cover_days: number | null; cover_text: string; early_risk: boolean };
-  inbound: Array<{ id: string; qty: number; eta: string; days: number; doc_text: string; counted: boolean; in_horizon: boolean; where_text: string }>;
+  stock: { free: number | null; free_manual: boolean; reserve: number | null; cover_days: number | null; cover_text: string; early_risk: boolean };
+  inbound: Array<{ id: string; qty: number; eta: string | null; days: number | null; doc_text: string; counted: boolean; in_horizon: boolean; where_text: string }>;
   manual: { active: boolean; qty: number | null; reason: string | null; note_text: string | null };
   price: { value: number | null; manual: boolean; text: string };
   cost: { value: number | null; text: string };
@@ -168,5 +179,5 @@ export interface OrderCurrent {
 
 export interface ValidationScenarios {
   passed: number; total: number; summary_text: string;
-  items: Array<{ n: number; name: string; expected_text: string; actual_text: string; passed: boolean }>;
+  items: Array<{ n: number; name: string; expected_text: string | null; actual_text: string; passed: boolean }>;
 }

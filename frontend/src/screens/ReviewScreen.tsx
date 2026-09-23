@@ -1,134 +1,110 @@
 import { useEffect, useState } from 'react'
-import type { OrderCurrent, OrderStatus, Role } from '../types'
-import { getOrderCurrent } from '../api/client'
+import type { OrderCurrent, Role } from '../types'
+import { exportOrder, getAuditLog, getOrderCurrent, getOrderVersions, getVersionDiff, orderAction, saveExportSettings, setRole } from '../api/client'
 
-interface Props { initialRole?: Role }
+type Version = { version: number; approved_at: string; approved_by_text: string; lines: number }
+type Audit = { version: number; text: string; user_text: string; at: string }
+type Diff = { title_text: string; rows: Array<{ code_1c: string; name: string; in_version_text: string; current_text: string }> }
 
-function orderStatusLabel(s: OrderStatus) {
-  if (s === 'draft') return 'Черновик'
-  if (s === 'submitted') return 'На согласовании'
-  return 'Утверждён'
-}
+const format = (value: number | null) => value == null ? '—' : new Intl.NumberFormat('ru-RU').format(value)
 
-export default function ReviewScreen({ initialRole = 'manager' }: Props) {
+export default function ReviewScreen() {
   const [data, setData] = useState<OrderCurrent | null>(null)
-  const [role, setRole] = useState<Role>(initialRole)
-  const [status, setStatus] = useState<OrderStatus>('draft')
+  const [role, setCurrentRole] = useState<Role>('manager')
+  const [versions, setVersions] = useState<Version[]>([])
+  const [audit, setAudit] = useState<Audit[]>([])
+  const [diff, setDiff] = useState<Diff | null>(null)
+  const [comment, setComment] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
 
-  useEffect(() => { getOrderCurrent().then(d => { setData(d); setStatus(d.status) }) }, [])
+  async function refresh() {
+    const [order, savedVersions, log] = await Promise.all([getOrderCurrent(), getOrderVersions(), getAuditLog()])
+    setData(order)
+    setCurrentRole(order.header.role)
+    setVersions(savedVersions)
+    setAudit(log.items)
+  }
 
-  if (!data) return <div style={{ padding: 24 }}>Загрузка...</div>
+  useEffect(() => {
+    Promise.all([getOrderCurrent(), getOrderVersions(), getAuditLog()])
+      .then(([order, savedVersions, log]) => { setData(order); setCurrentRole(order.header.role); setVersions(savedVersions); setAudit(log.items) })
+      .catch(cause => setMessage(String(cause)))
+  }, [])
 
-  return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-        <div>
-          <h1 style={{ marginBottom: 4 }}>Заказ {data.status_text}</h1>
-          <p style={{ color: 'var(--color-neutral-600)', fontSize: 13 }}>{data.hint_text}</p>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-          <div>
-            <span style={{ fontSize: 12, color: 'var(--color-neutral-600)', marginRight: 8 }}>Роль:</span>
-            <div className='seg' style={{ display: 'inline-flex' }}>
-              <div className='seg-opt'>
-                <input type='radio' id='role-mgr' name='role' checked={role==='manager'} onChange={() => setRole('manager')} />
-                <label htmlFor='role-mgr'>Менеджер</label>
-              </div>
-              <div className='seg-opt'>
-                <input type='radio' id='role-head' name='role' checked={role==='head'} onChange={() => setRole('head')} />
-                <label htmlFor='role-head'>Руководитель</label>
-              </div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {role === 'manager' && status === 'draft' && (
-              <button className='btn btn-primary' onClick={() => setStatus('submitted')}>Отправить на согласование</button>
-            )}
-            {role === 'head' && status === 'submitted' && (
-              <>
-                <button className='btn btn-primary' onClick={() => setStatus('approved')}>Утвердить</button>
-                <button className='btn btn-secondary' onClick={() => setStatus('draft')}>Вернуть на доработку</button>
-              </>
-            )}
-            {status === 'approved' && (
-              <button className='btn btn-primary'>Экспорт в CSV</button>
-            )}
-          </div>
-          <span className={'tag ' + (status === 'approved' ? 'tag-accent' : status === 'submitted' ? 'tag-outline' : 'tag-neutral')}>
-            {orderStatusLabel(status)}
-          </span>
-        </div>
-      </div>      {data.groups.map(group => (
-        <div key={group.supplier.id} style={{ marginBottom: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <div>
-              <h2 style={{ fontSize: 18 }}>{group.supplier.name}</h2>
-              <span style={{ fontSize: 13, color: 'var(--color-neutral-600)' }}>{group.summary_text} · {group.cost_text}</span>
-              {group.pending_text && <div className='tag tag-outline' style={{ marginTop: 4 }}>{group.pending_text}</div>}
-            </div>
-          </div>
-          <div style={{ background: 'white', borderRadius: 2, overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
-            <table className='table'>
-              <thead><tr>
-                <th>Код 1С</th><th style={{ minWidth: 200 }}>Наименование</th><th>Ед.</th>
-                <th>Рекоменд.</th><th>Итого</th><th>Цена</th><th>Сумма</th><th>Причина</th>
-              </tr></thead>
-              <tbody>
-                {group.lines.map(line => (
-                  <tr key={line.sku_id}>
-                    <td><code style={{ fontSize: 12 }}>{line.code_1c}</code></td>
-                    <td style={{ fontSize: 13 }}>{line.name}</td>
-                    <td>{line.purchase_unit}</td>
-                    <td style={{ textAlign: 'right', color: 'var(--color-neutral-600)' }}>
-                      {line.recommended_qty != null ? new Intl.NumberFormat('ru-RU').format(line.recommended_qty) : '—'}
-                    </td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                      {line.final_qty != null ? new Intl.NumberFormat('ru-RU').format(line.final_qty) : '—'}
-                      {line.manual && <span className='tag tag-outline' style={{ marginLeft: 6, fontSize: 10 }}>ручн.</span>}
-                    </td>
-                    <td style={{ textAlign: 'right', color: 'var(--color-neutral-500)' }}>{line.price != null ? line.price : '—'}</td>
-                    <td style={{ textAlign: 'right', color: 'var(--color-neutral-500)' }}>{line.cost != null ? new Intl.NumberFormat('ru-RU').format(line.cost) : '—'}</td>
-                    <td style={{ fontSize: 12, color: 'var(--color-neutral-600)' }}>{line.reason ?? ''}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ))}
+  async function switchRole(next: Role) {
+    setBusy(true)
+    setMessage('')
+    try { await setRole(next); await refresh() }
+    catch (cause) { setMessage(`Не удалось сменить роль: ${String(cause)}`) }
+    finally { setBusy(false) }
+  }
 
-      <div style={{ marginTop: 24, padding: 16, border: '1px solid var(--color-divider)', borderRadius: 2 }}>
-        <h2 style={{ fontSize: 16, marginBottom: 12 }}>Настройки экспорта</h2>
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
-          <div className='field'>
-            <label>Формат</label>
-            <select className='input' style={{ width: 120 }} defaultValue={data.export_settings.format}>
-              {data.export_settings.format_options.map(o => <option key={o}>{o}</option>)}
-            </select>
-          </div>
-          <div className='field'>
-            <label>Разделитель</label>
-            <select className='input' style={{ width: 100 }} defaultValue={data.export_settings.separator}>
-              {data.export_settings.separator_options.map(o => <option key={o}>{o}</option>)}
-            </select>
-          </div>
-          <div className='field'>
-            <label>Кодировка</label>
-            <select className='input' style={{ width: 140 }} defaultValue={data.export_settings.encoding}>
-              {data.export_settings.encoding_options.map(o => <option key={o}>{o}</option>)}
-            </select>
-          </div>
-        </div>
-        <p style={{ fontSize: 12, color: 'var(--color-neutral-600)' }}>{data.export_settings.note_text}</p>
-        <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {data.export_settings.columns.map(col => (
-            <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }}>
-              <input type='checkbox' defaultChecked={col.enabled} />
-              {col.label}
-            </label>
-          ))}
-        </div>
+  async function act(action: 'submit' | 'approve' | 'reject') {
+    if (!data) return
+    setBusy(true)
+    setMessage('')
+    try {
+      await orderAction({ action, order_version: data.version, order_revision: data.revision, ...(action === 'reject' ? { comment } : {}) })
+      await refresh()
+      setComment('')
+      setMessage(action === 'submit' ? 'Отправлено на согласование' : action === 'approve' ? 'Заказ утверждён' : 'Возвращено на доработку')
+    } catch (cause) { setMessage(`Действие не выполнено: ${String(cause)}`) }
+    finally { setBusy(false) }
+  }
+
+  async function updateExport(patch: Partial<OrderCurrent['export_settings']>) {
+    if (!data) return
+    const next = { ...data.export_settings, ...patch }
+    setData({ ...data, export_settings: next })
+    try { const result = await saveExportSettings({ format: next.format, separator: next.separator, encoding: next.encoding, columns: next.columns.map(({ key, enabled }) => ({ key, enabled })) }); setData(result.order) }
+    catch (cause) { setMessage(`Не удалось сохранить настройки экспорта: ${String(cause)}`) }
+  }
+
+  async function download(supplierId?: string) {
+    setBusy(true)
+    setMessage('')
+    try { await exportOrder(supplierId) }
+    catch (cause) { setMessage(`Не удалось выгрузить заказ: ${String(cause)}`) }
+    finally { setBusy(false) }
+  }
+
+  if (!data) return <div className="page"><h1>Проверка и экспорт</h1><p className="page-subtitle">{message || 'Загрузка заказа…'}</p></div>
+
+  return <div className="page">
+    <header className="page-head"><div><h1>Проверка и экспорт</h1><p className="page-subtitle">Проверьте количества по поставщикам. Менеджер отправляет версию на согласование, руководитель утверждает или возвращает её.</p></div><span className={`tag ${data.status === 'approved' ? 'tag-accent' : 'tag-outline'}`}>{data.status_text}</span></header>
+    {message && <div className="notice" role="status" style={{ marginBottom: 18 }}>{message}</div>}
+    <section className="blueprint panel">
+      <div className="inline-actions" style={{ justifyContent: 'space-between' }}>
+        <div><h2 className="card-title">Согласование версии</h2><p className="tiny" style={{ marginTop: 4 }}>{data.hint_text}</p></div>
+        <div className="inline-actions"><span className="tiny">Роль</span><div className="seg"><div className="seg-opt"><input type="radio" name="review-role" id="manager-role" checked={role === 'manager'} onChange={() => void switchRole('manager')} disabled={busy} /><label htmlFor="manager-role">Менеджер</label></div><div className="seg-opt"><input type="radio" name="review-role" id="head-role" checked={role === 'head'} onChange={() => void switchRole('head')} disabled={busy} /><label htmlFor="head-role">Руководитель</label></div></div></div>
       </div>
-    </div>
-  )
+      <div className="inline-actions" style={{ marginTop: 16 }}>
+        {data.permissions.can_submit && <button className="btn btn-primary blueprint" type="button" onClick={() => void act('submit')} disabled={busy}>Отправить на согласование</button>}
+        {data.permissions.can_approve && <button className="btn btn-primary blueprint" type="button" onClick={() => void act('approve')} disabled={busy}>Утвердить v{data.version}</button>}
+        {data.permissions.can_reject && <button className="btn btn-secondary" type="button" onClick={() => void act('reject')} disabled={busy}>Вернуть на доработку</button>}
+        {data.status === 'approved' && <span className="tiny">Экспорт доступен; отправка поставщику выполняется вне системы.</span>}
+      </div>
+      {data.permissions.can_reject && <div className="field" style={{ maxWidth: 520, marginTop: 12 }}><label htmlFor="reject-comment">Комментарий к возврату</label><input id="reject-comment" className="input" value={comment} onChange={event => setComment(event.target.value)} placeholder="Что нужно исправить" /></div>}
+      {data.blocked_reason_text && <div className="notice" style={{ marginTop: 12 }}>{data.blocked_reason_text}</div>}
+    </section>
+
+    {data.groups.map(group => <section className="page-section" key={group.supplier.id}>
+      <div className="inline-actions" style={{ justifyContent: 'space-between', marginBottom: 10 }}><div><h2>{group.supplier.name}</h2><p className="tiny">{group.summary_text} · {group.cost_text}</p></div><button type="button" className="btn btn-secondary" disabled={!data.permissions.can_export || busy} onClick={() => void download(group.supplier.id)}>Экспортировать {group.supplier.name}</button></div>
+      {group.pending_text && <div className="notice" style={{ marginBottom: 10 }}>{group.pending_text}</div>}
+      <div className="scroll-table"><table className="table" style={{ minWidth: 880 }}><thead><tr><th>Код 1С</th><th style={{ minWidth: 240 }}>Наименование</th><th>Ед.</th><th className="numeric">Рекомендовано</th><th className="numeric">Итого</th><th className="numeric">Цена</th><th className="numeric">Сумма</th><th>Причина изменения</th></tr></thead><tbody>{group.lines.map(line => <tr key={line.sku_id}><td><code>{line.code_1c}</code></td><td>{line.name}</td><td>{line.purchase_unit}</td><td className="numeric">{format(line.recommended_qty)}</td><td className="numeric"><strong>{format(line.final_qty)}</strong>{line.manual && <span className="tag tag-outline" style={{ marginLeft: 5 }}>ручн.</span>}</td><td className="numeric">{format(line.price)}</td><td className="numeric">{format(line.cost)}</td><td className="tiny">{line.reason || '—'}</td></tr>)}</tbody></table></div>
+    </section>)}
+
+    <section className="page-section blueprint panel"><h2 className="card-title">Настройки экспорта</h2><p className="tiny" style={{ marginTop: 4 }}>{data.export_settings.note_text}</p>
+      <div className="toolbar" style={{ marginTop: 14 }}><div className="field"><label htmlFor="export-format">Формат</label><select id="export-format" className="input" value={data.export_settings.format} onChange={event => void updateExport({ format: event.target.value as 'csv' | 'xlsx' })}>{data.export_settings.format_options.map(option => <option key={option} value={option}>{option.toUpperCase()}</option>)}</select></div><div className="field"><label htmlFor="export-separator">Разделитель CSV</label><select id="export-separator" className="input" value={data.export_settings.separator} onChange={event => void updateExport({ separator: event.target.value })}>{data.export_settings.separator_options.map(option => <option key={option} value={option}>{option}</option>)}</select></div><div className="field"><label htmlFor="export-encoding">Кодировка CSV</label><select id="export-encoding" className="input" value={data.export_settings.encoding} onChange={event => void updateExport({ encoding: event.target.value })}>{data.export_settings.encoding_options.map(option => <option key={option} value={option}>{option}</option>)}</select></div></div>
+      <div className="inline-actions" style={{ marginTop: 14 }}>{data.export_settings.columns.map(column => <label key={column.key} className="tiny" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><input type="checkbox" checked={column.enabled} onChange={() => void updateExport({ columns: data.export_settings.columns.map(item => item.key === column.key ? { ...item, enabled: !item.enabled } : item) })} />{column.label}</label>)}</div>
+      <button type="button" className="btn btn-primary blueprint" style={{ marginTop: 18 }} disabled={!data.permissions.can_export || busy} onClick={() => void download()}>Экспортировать утверждённый заказ</button>
+    </section>
+
+    <section className="page-section"><h2 className="section-heading">Утверждённые версии</h2>{versions.length ? <div className="scroll-table"><table className="table"><thead><tr><th>Версия</th><th>Утверждена</th><th>Кем</th><th className="numeric">Строк</th><th></th></tr></thead><tbody>{versions.map(version => <tr key={version.version}><td>v{version.version}</td><td>{version.approved_at}</td><td>{version.approved_by_text}</td><td className="numeric">{version.lines}</td><td><button className="btn btn-ghost" onClick={() => void getVersionDiff(version.version).then(setDiff).catch(cause => setMessage(String(cause)))}>Сравнить</button></td></tr>)}</tbody></table></div> : <p className="muted">Утверждённых версий пока нет.</p>}
+      {diff && <div className="blueprint panel" style={{ marginTop: 12 }}><div className="inline-actions" style={{ justifyContent: 'space-between' }}><h3 className="card-title">{diff.title_text}</h3><button className="btn btn-ghost" onClick={() => setDiff(null)}>Закрыть</button></div>{diff.rows.length ? <div className="scroll-table"><table className="table"><thead><tr><th>Код 1С</th><th>Наименование</th><th>В версии</th><th>Сейчас</th></tr></thead><tbody>{diff.rows.map(row => <tr key={row.code_1c}><td>{row.code_1c}</td><td>{row.name}</td><td>{row.in_version_text}</td><td>{row.current_text}</td></tr>)}</tbody></table></div> : <p className="muted">Различий нет.</p>}</div>}
+    </section>
+
+    <section className="page-section"><h2 className="section-heading">Журнал изменений</h2>{audit.length ? <div className="scroll-table"><table className="table"><thead><tr><th>Время</th><th>Версия</th><th>Действие</th><th>Кто</th></tr></thead><tbody>{audit.map((entry, index) => <tr key={`${entry.version}-${entry.at}-${index}`}><td className="tiny">{entry.at}</td><td>v{entry.version}</td><td>{entry.text}</td><td>{entry.user_text}</td></tr>)}</tbody></table></div> : <p className="muted">Записей пока нет.</p>}</section>
+  </div>
 }

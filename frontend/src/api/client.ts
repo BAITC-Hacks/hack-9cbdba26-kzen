@@ -94,3 +94,15 @@ export async function exportOrder(supplierId?: string): Promise<void> {
   anchor.click()
   URL.revokeObjectURL(url)
 }
+
+export async function getOrderVersions(): Promise<Array<{ version: number; approved_at: string; approved_by_text: string; lines: number }>> {
+  return get('/orders/versions')
+}
+
+export async function getAuditLog(): Promise<{ items: Array<{ version: number; text: string; user_text: string; at: string }> }> {
+  return get('/audit-log')
+}
+
+export async function getVersionDiff(version: number): Promise<{ title_text: string; rows: Array<{ code_1c: string; name: string; in_version_text: string; current_text: string }> }> {
+  return get(`/orders/versions/${version}/diff`)
+}

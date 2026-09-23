@@ -183,6 +183,11 @@ export default function SkuScreen({ skuId, onBack, onSkuChange, onOrderChanged }
                 <div style={{ fontSize: 11, color: 'var(--color-neutral-600)' }}>в резерве</div>
               </div>
             </div>
+            {data.header.data_mode === 'imported' && data.sku.supplier.id === 'IEK' && data.stock.free !== null && (
+              <div className="notice tiny" style={{ marginBottom: 12 }}>
+                Для ИЭК нет отдельного снимка свободного остатка на дату расчёта. Показанное значение взято из начального остатка последнего месяца; проверьте его перед утверждением заказа.
+              </div>
+            )}
             {data.inbound.length > 0 && (
               <table className='table' style={{ fontSize: 12 }}>
                 <thead><tr><th>Документ</th><th>Кол-во</th><th>ETA</th><th>Учтён</th></tr></thead>

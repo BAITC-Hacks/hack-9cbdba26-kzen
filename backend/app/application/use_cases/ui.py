@@ -234,7 +234,7 @@ def _reason_short(line: DraftLine) -> str:
     parts = dict(line.reasons)
     # Подписи — контракт с _build_reasons в replenishment.py: переименуют там —
     # формула тихо откатится на полное обоснование, поэтому её держит тест
-    labels = ("Потребность на период", "Свободный остаток", "Товар в пути")
+    labels = ("Потребность на период", "Свободный остаток", "Учтено в пути")
     if any(label not in parts for label in labels):
         return line.explanation
     # Значения приходят как «120 шт»; единица есть в соседней колонке, в формуле она шум
@@ -245,9 +245,35 @@ def _reason_short(line: DraftLine) -> str:
     return text
 
 
-def _inbound(sku: Sku | None) -> list[dict[str, Any]]:
-    # Даты поступления пока нет в модели: eta = null, фронт покажет «—»
-    return [{"qty": sku.in_transit, "eta": None}] if sku and sku.in_transit > 0 else []
+def _inbound(
+    sku: Sku | None,
+    *,
+    today: date | None = None,
+    arrival: date | None = None,
+) -> list[dict[str, Any]]:
+    if sku is None or sku.in_transit <= 0:
+        return []
+    if not sku.inbound:
+        return [{
+            "id": "legacy", "qty": sku.in_transit, "eta": None, "days": None,
+            "doc_text": "Товар в пути", "counted": True, "in_horizon": True,
+            "where_text": "учтён целиком: дата поступления неизвестна",
+        }]
+
+    result = []
+    for index, item in enumerate(sku.inbound, start=1):
+        counted = item.eta is None or arrival is None or item.eta <= arrival
+        result.append({
+            "id": item.document or f"inbound-{index}",
+            "qty": item.quantity,
+            "eta": item.eta.isoformat() if item.eta else None,
+            "days": (item.eta - today).days if item.eta and today else None,
+            "doc_text": item.document or "Товар в пути",
+            "counted": counted,
+            "in_horizon": counted,
+            "where_text": "успевает к горизонту" if counted else "не успевает к горизонту",
+        })
+    return result
 
 
 def recommendation_row(c: Container, line: DraftLine) -> dict[str, Any]:
@@ -263,7 +289,12 @@ def recommendation_row(c: Container, line: DraftLine) -> dict[str, Any]:
         "category": (sku.category or None) if sku else None,
         "unit": line.unit, "purchase_unit": line.unit, "unit_text": line.unit,
         "free_stock": sku.free_stock if sku else None,
-        "inbound": _inbound(sku),
+        "inbound": _inbound(
+            sku,
+            today=c.workspace.calc_date or date.today(),
+            arrival=(c.workspace.calc_date or date.today())
+            + timedelta(days=c.workspace.supplier(line.supplier).lead_time_days),
+        ),
         "recommended_qty": line.recommended if line.status is not LineStatus.INSUFFICIENT_DATA
         else None,
         "final_qty": line.quantity if computed else None,
@@ -467,11 +498,11 @@ def explanation(c: Container, sku_id: str) -> dict[str, Any]:
                   "cover_days": cover,
                   "cover_text": f"{cover} дн." if cover is not None else "—",
                   "early_risk": line.urgency == "critical"},
-        "inbound": [{
-            "id": "i1", "qty": sku.in_transit, "eta": None, "days": None,
-            "doc_text": "Товар в пути", "counted": True, "in_horizon": True,
-            "where_text": "учтён целиком: даты поступления нет в данных",
-        }] if sku.in_transit > 0 else [],
+        "inbound": _inbound(
+            sku,
+            today=c.workspace.calc_date or date.today(),
+            arrival=(c.workspace.calc_date or date.today()) + timedelta(days=s.lead_time_days),
+        ),
         "manual": {"active": line.adjusted, "qty": line.quantity if line.adjusted else None,
                    "reason": line.adjustment_reason or None,
                    "note_text": f"изменил: {line.adjusted_by}" if line.adjusted else None},

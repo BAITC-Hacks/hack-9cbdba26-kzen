@@ -12,7 +12,7 @@ from typing import Any
 
 from openpyxl import load_workbook
 
-from app.domain.entities import BulkOrderEvent, MonthPoint, Sku
+from app.domain.entities import BulkOrderEvent, Inbound, MonthPoint, Sku
 from app.domain.exceptions import StorageError
 from app.infrastructure.storage.data_quality import DataQualityReport
 from app.infrastructure.storage.memory_repo import MemorySkuRepository
@@ -71,6 +71,7 @@ class _Draft:
     reserved_stock: float = 0.0
     free_stock: float = 0.0
     in_transit: float = 0.0
+    inbound: list[Inbound] = field(default_factory=list)
     sales: dict[date, float] = field(default_factory=dict)
     stocks: dict[date, float] = field(default_factory=dict)
     stock_history_known: bool = False
@@ -341,6 +342,9 @@ def _read_iek_transit(
     code_idx = _column(header, "Код 1с")
     article_idx = _column(header, "Артикул ИЭК")
     name_idx = _first_column(header, "Наименование", " Наименование")
+    inbound_columns = {
+        idx: _parse_inbound_header(value) for idx, value in enumerate(header[3:], start=3)
+    }
     seen: Counter[str] = Counter()
     mapped_by_article = 0
 
@@ -356,7 +360,12 @@ def _read_iek_transit(
         draft = drafts.setdefault(code, _Draft(code=code, supplier=files.supplier))
         draft.name = draft.name or _text(_at(row, name_idx))
         _set_article(draft, article, article_to_code, report)
-        draft.in_transit += sum(max(0.0, _number(value, default=0.0)) for value in row[3:])
+        for idx, (eta, document) in inbound_columns.items():
+            quantity = max(0.0, _number(_at(row, idx), default=0.0))
+            if quantity <= 0:
+                continue
+            draft.in_transit += quantity
+            draft.inbound.append(Inbound(quantity=quantity, eta=eta, document=document))
     workbook.close()
 
     report.metrics[f"{files.supplier}.transit_mapped_by_article"] = mapped_by_article
@@ -414,6 +423,10 @@ def _read_systeme_model(
         draft.free_stock = max(0.0, _number(_at(row, free_idx), default=calculated_free))
         inconsistent_free += abs(draft.free_stock - calculated_free) > 0.01
         draft.in_transit = max(0.0, _number(_at(row, transit_idx), default=0.0))
+        if draft.in_transit > 0:
+            draft.inbound = [
+                Inbound(quantity=draft.in_transit, eta=None, document="СЭ в пути")
+            ]
     workbook.close()
 
     report.add_issue(
@@ -578,6 +591,7 @@ def _to_sku(draft: _Draft) -> Sku:
         reserved_stock=draft.reserved_stock,
         free_stock=max(0.0, draft.free_stock),
         in_transit=max(0.0, draft.in_transit),
+        inbound=tuple(draft.inbound),
         history=points,
         bulk_orders=draft.bulk_orders,
     )
@@ -648,6 +662,16 @@ def _transaction_month(value: Any) -> date | None:
         except ValueError:
             continue
     return None
+
+
+def _parse_inbound_header(value: str) -> tuple[date | None, str]:
+    """Извлечь ETA и узнаваемый номер документа из заголовка заказа ИЭК."""
+    text = _text(value).replace("\\xa0", " ")
+    eta_match = re.search(r"поступление до\s+(\d{2}\.\d{2}\.\d{4})", text, re.IGNORECASE)
+    document_match = re.search(r"УТ-\d+", text, re.IGNORECASE)
+    eta = datetime.strptime(eta_match.group(1), "%d.%m.%Y").date() if eta_match else None
+    document = document_match.group(0).upper() if document_match else text
+    return eta, document
 
 
 def _column(header: list[str], name: str) -> int:

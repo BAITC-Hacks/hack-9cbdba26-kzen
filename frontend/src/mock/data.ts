@@ -89,7 +89,7 @@ export const mockSkuExplanation: SkuExplanation = {
 };
 export const mockOrder: OrderCurrent = {
   header: mockHeader,
-  version: 3, status: 'draft', status_text: 'v3 Черновик',
+  version: 3, revision: 0, status: 'draft', status_text: 'v3 Черновик',
   approved_at: null, approved_by: null,
   hint_text: 'Проверьте список позиций и отправьте на согласование руководителю.',
   permissions: { can_edit: true, can_submit: true, can_approve: false, can_reject: false, can_export: false },

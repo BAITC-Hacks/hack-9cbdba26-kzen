@@ -32,6 +32,24 @@ export interface AppHeader {
   user: { id: string; name: string };
 }
 
+export interface DataOverview {
+  header: AppHeader;
+  sources: Array<{ key: string; supplier: Supplier; type_text: string; usage_text: string; freshness_text: string | null; volume_text: string | null; file: { name: string; status_text: string } | null }>;
+  matching: Array<{ label?: string; value_text?: string }>;
+  readiness: Array<{ supplier: Supplier; calculated: number; needs_data: number; insufficient_history: number }>;
+  assumptions: Array<{ label: string; value_text: string; origin: Origin }>;
+  issues: Array<{ text?: string; label?: string }>;
+  document_rules: Array<{ doc_type: string; rule_text: string; editable: boolean }>;
+  settings: {
+    warehouse_options: Warehouse[];
+    category_filter: string | null;
+    category_options: Array<{ value: string | null; label: string }>;
+    calc_date: string; calc_date_min: string; calc_date_max: string;
+    suppliers: Array<{ id: SupplierId; name: string; lead_time_days: number; review_days: number; horizon_days: number }>;
+    excess_months: number;
+  };
+}
+
 export interface RecommendationRow {
   sku_id: SkuId;
   supplier: Supplier;
@@ -118,6 +136,7 @@ export interface SkuExplanation {
 export interface OrderCurrent {
   header: AppHeader;
   version: number;
+  revision: number;
   status: OrderStatus;
   status_text: string;
   approved_at: DateTime | null;

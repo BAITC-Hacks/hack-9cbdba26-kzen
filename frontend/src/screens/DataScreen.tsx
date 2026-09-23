@@ -1,101 +1,115 @@
-import { useState } from 'react'
-import type { AppHeader } from '../types'
+import { useEffect, useState } from 'react'
+import type { AppHeader, DataOverview } from '../types'
+import { getDataOverview, resetSession, saveSettings } from '../api/client'
 
-interface Props { header: AppHeader; onCalculate: () => void }
+interface Props { header: AppHeader; onCalculate: () => Promise<void> }
 
-const DATA_SOURCES = [
-  { name: 'Свободный остаток SE', file: 'Товар в пути_SystemElectric на 22.09.2026', status: 'used', rows: 847 },
-  { name: 'Свободный остаток IEK', file: 'Свободные остатки ИЭК 22.09.2026', status: 'used', rows: 1203 },
-  { name: 'Продажи SE', file: 'Ежемесячные продажи SE янв.2024–сент.2026', status: 'used', rows: 3240 },
-  { name: 'Продажи IEK', file: 'Ежемесячные продажи IEK янв.2024–сент.2026', status: 'used', rows: 2890 },
-  { name: 'Прайс SE', file: '—', status: 'not_used', rows: 0 },
-]
+function Corners() {
+  return <><i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" /></>
+}
 
 export default function DataScreen({ header, onCalculate }: Props) {
-  const [leadTime, setLeadTime] = useState(30)
-  const [reviewDays, setReviewDays] = useState(14)
-  const [safetyDays, setSafetyDays] = useState(10)
+  const [overview, setOverview] = useState<DataOverview | null>(null)
+  const [settings, setSettings] = useState<DataOverview['settings'] | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    getDataOverview().then(data => { setOverview(data); setSettings(data.settings) }).catch(error => setMessage(String(error)))
+  }, [])
+
+  async function calculate() {
+    if (!settings) return
+    setSaving(true)
+    setMessage('')
+    try {
+      await saveSettings({ category_filter: settings.category_filter, calc_date: settings.calc_date, suppliers: settings.suppliers.map(({ id, lead_time_days, review_days }) => ({ id, lead_time_days, review_days })), excess_months: settings.excess_months })
+      await onCalculate()
+    } catch (error) { setMessage(`Не удалось выполнить расчёт: ${String(error)}`) }
+    finally { setSaving(false) }
+  }
+
+  async function reset() {
+    if (!window.confirm('Сбросить расчёт, правки и версии текущей сессии?')) return
+    setSaving(true)
+    try {
+      await resetSession()
+      const data = await getDataOverview()
+      setOverview(data)
+      setSettings(data.settings)
+      setMessage('Сессия сброшена')
+    } catch (error) { setMessage(`Не удалось сбросить сессию: ${String(error)}`) }
+    finally { setSaving(false) }
+  }
+
+  function updateSupplier(id: string, field: 'lead_time_days' | 'review_days', value: number) {
+    setSettings(current => current && ({ ...current, suppliers: current.suppliers.map(supplier => supplier.id === id ? { ...supplier, [field]: value, horizon_days: field === 'lead_time_days' ? value + supplier.review_days : supplier.lead_time_days + value } : supplier) }))
+  }
 
   return (
-    <div style={{ padding: 24, maxWidth: 900 }}>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ marginBottom: 8 }}>Данные и параметры</h1>
-        <p style={{ color: 'var(--color-neutral-600)' }}>Склад: {header.warehouse.name} · Дата расчёта: {header.calc_date}</p>
-      </div>
+    <div className="page">
+      <header className="page-head">
+        <div>
+          <h1>Данные и параметры</h1>
+          <p className="page-subtitle">Выгрузки, их актуальность, проверки качества и настройки расчёта. Позиции с проблемами остаются в расчёте со статусом «нужны данные».</p>
+        </div>
+        <div className="inline-actions">
+          <button className="btn btn-ghost" type="button" onClick={reset} disabled={saving}>Сбросить сессию</button>
+          <button className="btn btn-primary blueprint" type="button" onClick={calculate} disabled={saving || !settings}><Corners />{saving ? 'Расчёт…' : 'Рассчитать рекомендации'}</button>
+        </div>
+      </header>
 
-      <section style={{ marginBottom: 24 }}>
-        <h2 style={{ marginBottom: 12, fontSize: 18 }}>Источники данных</h2>
-        <div style={{ background: 'white', borderRadius: 2, overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
-          <table className='table'>
-            <thead><tr>
-              <th>Источник</th><th>Файл</th><th>Строк</th><th>Статус</th>
-            </tr></thead>
+      {message && <div className="notice" role="status">{message}</div>}
+      <section className="page-section">
+        <h2 className="section-heading">Источники</h2>
+        <div className="scroll-table">
+          <table className="table" style={{ minWidth: 850 }}>
+            <thead><tr><th>Поставщик</th><th>Источник</th><th>Актуальность</th><th className="numeric">Объём (реальный)</th><th>Загруженный файл</th></tr></thead>
             <tbody>
-              {DATA_SOURCES.map((ds, i) => (
-                <tr key={i}>
-                  <td>{ds.name}</td>
-                  <td style={{ color: 'var(--color-neutral-600)', fontSize: 12 }}>{ds.file}</td>
-                  <td>{ds.rows > 0 ? ds.rows.toLocaleString('ru-RU') : '—'}</td>
-                  <td>
-                    {ds.status === 'used' && <span className='tag tag-accent'>Загружен</span>}
-                    {ds.status === 'not_used' && <span className='tag tag-outline'>Не загружен</span>}
-                  </td>
+              {overview?.sources.map(source => (
+                <tr key={source.key}>
+                  <td><span className="tag tag-neutral">{source.supplier.id === 'SE' ? 'Systeme Electric' : 'ИЭК'}</span></td>
+                  <td>{source.type_text}<div className="tiny">{source.usage_text}</div></td>
+                  <td>{source.freshness_text || '—'}</td>
+                  <td className="numeric">{source.volume_text || '—'}</td>
+                  <td className="tiny">{source.file?.name || '—'} {source.file?.status_text && <span className="tag tag-outline">{source.file.status_text}</span>}</td>
                 </tr>
               ))}
+              {overview && overview.sources.length === 0 && <tr><td colSpan={5} className="muted">Файлы пока не найдены. Расчёт использует текущий набор данных сервера.</td></tr>}
             </tbody>
           </table>
         </div>
-        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-          <button className='btn btn-secondary'>Загрузить файл</button>
-          <button className='btn btn-secondary'>Загрузить из 1С</button>
-        </div>
+        <p className="tiny" style={{ marginTop: 10 }}>Данные загружаются и разбираются на сервере. Статус источника показан по фактическому ответу API.</p>
       </section>
 
-      <section style={{ marginBottom: 24 }}>
-        <h2 style={{ marginBottom: 12, fontSize: 18 }}>Параметры расчёта</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, maxWidth: 600 }}>
-          <div className='field'>
-            <label>Срок поставки L (дн.)</label>
-            <input className='input' type='number' value={leadTime} onChange={e => setLeadTime(+e.target.value)} />
-          </div>
-          <div className='field'>
-            <label>Цикл пересмотра R (дн.)</label>
-            <input className='input' type='number' value={reviewDays} onChange={e => setReviewDays(+e.target.value)} />
-          </div>
-          <div className='field'>
-            <label>Страховой запас (дн.)</label>
-            <input className='input' type='number' value={safetyDays} onChange={e => setSafetyDays(+e.target.value)} />
-          </div>
-        </div>
-        <div style={{ marginTop: 8 }}>
-          <p style={{ fontSize: 12, color: 'var(--color-neutral-600)' }}>
-            Горизонт H = L {leadTime} + R {reviewDays} = {leadTime + reviewDays} дн.
-          </p>
-        </div>
-      </section>
+      <div className="data-two-column page-section">
+        <section className="blueprint panel"><Corners />
+          <h2 className="card-title">Параметры расчёта</h2>
+          {settings ? <>
+            <div className="field-grid" style={{ marginTop: 14 }}>
+              <div className="field"><label htmlFor="warehouse">Склад</label><select id="warehouse" className="input" disabled><option>{header.warehouse.name}</option></select></div>
+              <div className="field"><label htmlFor="category">Категория</label><select id="category" className="input" value={settings.category_filter || ''} onChange={event => setSettings({ ...settings, category_filter: event.target.value || null })}>{settings.category_options.map(option => <option key={option.value || 'all'} value={option.value || ''}>{option.label}</option>)}</select></div>
+              <div className="field"><label htmlFor="calc-date">Дата расчёта</label><input id="calc-date" className="input" type="date" min={settings.calc_date_min} max={settings.calc_date_max} value={settings.calc_date} onChange={event => setSettings({ ...settings, calc_date: event.target.value })} /></div>
+              <div className="field"><label htmlFor="excess">Избыточный запас, мес. спроса</label><input id="excess" className="input" type="number" min="0.5" step="0.5" value={settings.excess_months} onChange={event => setSettings({ ...settings, excess_months: Number(event.target.value) })} /></div>
+            </div>
+            <div className="scroll-table" style={{ marginTop: 18 }}><table className="table"><thead><tr><th>Поставщик</th><th>L, дн.</th><th>R, дн.</th><th>H</th></tr></thead><tbody>{settings.suppliers.map(supplier => <tr key={supplier.id}><td>{supplier.name}</td><td><input className="input" aria-label={`Срок поставки ${supplier.name}`} type="number" min="1" style={{ width: 76 }} value={supplier.lead_time_days} onChange={event => updateSupplier(supplier.id, 'lead_time_days', Number(event.target.value))} /></td><td><input className="input" aria-label={`Период пересмотра ${supplier.name}`} type="number" min="1" style={{ width: 76 }} value={supplier.review_days} onChange={event => updateSupplier(supplier.id, 'review_days', Number(event.target.value))} /></td><td>{supplier.horizon_days} дн.</td></tr>)}</tbody></table></div>
+          </> : <p className="muted" style={{ marginTop: 12 }}>Загрузка настроек…</p>}
+        </section>
+        <section className="blueprint panel"><Corners />
+          <h2 className="card-title">Что можно рассчитать</h2>
+          <p className="tiny" style={{ marginTop: 6 }}>Готовность позиций по фактическому расчёту.</p>
+          <div className="scroll-table" style={{ marginTop: 14 }}><table className="table"><thead><tr><th>Поставщик</th><th className="numeric">Рассчитано</th><th className="numeric">Нужны данные</th><th className="numeric">Мало истории</th></tr></thead><tbody>{overview?.readiness.map(item => <tr key={item.supplier.id}><td>{item.supplier.name}</td><td className="numeric">{item.calculated}</td><td className="numeric">{item.needs_data}</td><td className="numeric">{item.insufficient_history}</td></tr>)}{overview?.readiness.length === 0 && <tr><td colSpan={4} className="muted">Запустите расчёт, чтобы увидеть готовность.</td></tr>}</tbody></table></div>
+        </section>
+      </div>
 
-      <section style={{ marginBottom: 24 }}>
-        <h2 style={{ marginBottom: 12, fontSize: 18 }}>Настройки What-If</h2>
-        <div className='notice'>
-          What-If режим позволяет смоделировать сдвиг поставки или изменение спроса перед расчётом.
-        </div>
-        <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, maxWidth: 400 }}>
-          <div className='field'>
-            <label>Задержка поставки (дн.)</label>
-            <input className='input' type='number' defaultValue={0} min={0} />
-          </div>
-          <div className='field'>
-            <label>Изменение спроса (%)</label>
-            <input className='input' type='number' defaultValue={100} min={50} max={200} />
-          </div>
-        </div>
+      <section className="page-section">
+        <h2 className="section-heading">Предположения в расчёте {overview?.assumptions.length ?? ''}</h2>
+        <div className="scroll-table"><table className="table"><thead><tr><th>Параметр</th><th>Значение и источник</th><th>Тип</th></tr></thead><tbody>{overview?.assumptions.map(item => <tr key={item.label}><td>{item.label}</td><td>{item.value_text}</td><td><span className="tag tag-outline">{item.origin === 'synthetic' ? 'синтетика' : item.origin === 'real' ? 'реальные данные' : 'допущение'}</span></td></tr>)}</tbody></table></div>
       </section>
-
-      <button className='btn btn-primary blueprint' style={{ fontSize: 15, padding: '10px 24px' }} onClick={onCalculate}>
-        <i className='corner tl' /><i className='corner tr' />
-        <i className='corner bl' /><i className='corner br' />
-        Рассчитать рекомендации
-      </button>
+      <section className="page-section">
+        <h2 className="section-heading">Правила обработки документов</h2>
+        <div className="scroll-table"><table className="table"><thead><tr><th>Документ</th><th>Правило</th></tr></thead><tbody>{overview?.document_rules.map(rule => <tr key={rule.doc_type}><td>{rule.doc_type}</td><td>{rule.rule_text}</td></tr>)}</tbody></table></div>
+      </section>
     </div>
   )
 }

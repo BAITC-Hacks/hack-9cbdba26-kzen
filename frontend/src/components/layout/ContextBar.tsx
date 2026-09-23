@@ -2,15 +2,26 @@ import type { AppHeader } from '../../types'
 
 interface Props { header: AppHeader }
 
+function dateLabel(value: string) {
+  const [year, month, day] = value.slice(0, 10).split('-')
+  return year && month && day ? `${day}.${month}.${year}` : value
+}
+
 export default function ContextBar({ header }: Props) {
+  const status = header.order.status === 'draft' ? 'черновик' : header.order.status === 'submitted' ? 'на согласовании' : 'утверждён'
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '6px 20px', borderBottom: '1px solid var(--color-divider)', fontSize: 12, color: 'var(--color-neutral-700)', flexWrap: 'wrap' }}>
-      <span><strong>Склад:</strong> {header.warehouse.name}</span>
-      <span><strong>Расчёт:</strong> {header.calc_date}</span>
-      <span><strong>Данные до:</strong> {header.data_cut_date}</span>
-      <span><strong>Заказ:</strong> v{header.order.version} · {header.order.status === 'draft' ? 'Черновик' : header.order.status === 'submitted' ? 'На согласовании' : 'Утверждён'}</span>
-      <span className='tag tag-neutral'>{header.data_mode_text}</span>
-      {header.calc_stale && <span className='tag tag-outline' style={{ color: '#c0392b' }}>Расчёт устарел</span>}
+    <div className="context-bar">
+      <span>Склад: <b>{header.warehouse.name}</b></span>
+      <span>Категория: <b>{header.category_filter || 'Все категории'}</b></span>
+      <span>Дата расчёта: <b>{dateLabel(header.calc_date)}</b></span>
+      <span>Срез данных: <b>{dateLabel(header.data_cut_date)}</b></span>
+      <span>Версия: <b>v{header.order.version}</b></span>
+      <span>Роль: <b>{header.role === 'head' ? 'Руководитель закупок' : 'Менеджер закупа'}</b></span>
+      <span>Расчёт: <b>{status}</b></span>
+      {header.snapshot_stale && <span className="tag tag-outline">Снимок остатка старше 7 дней</span>}
+      {header.calc_stale && <span className="tag tag-outline">Расчёт устарел</span>}
+      {header.what_if_active && <span className="tag tag-outline">Сценарий «что если» активен</span>}
+      <span className="tag tag-neutral context-source">{header.data_mode_text}</span>
     </div>
   )
 }

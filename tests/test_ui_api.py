@@ -214,10 +214,11 @@ def test_card_shows_small_nonzero_demand_without_changing_order(settings):
     assert card["demand"]["raw_avg"] == 0.25
     assert card["demand"]["regular_avg"] == 0.25
     assert [point["qty"] for point in card["chart"]["forecast"]] == [0.25] * 3
-    assert any("(0.25 шт/мес)" in issue["text"] for issue in card["issues"])
+    assert any("(0,25 шт/мес)" in issue["text"] for issue in card["issues"])
     steps = {step["label"]: step["value_text"] for step in card["steps"]}
-    assert steps["Средние продажи"] == "0.25 шт/мес"
+    assert steps["Средние продажи"] == "0,25 шт/мес"
     assert steps["Потребность на период"] != "0 шт"
+    assert "," in steps["Потребность на период"]
     assert steps["Рекомендуемый заказ"] == "10 шт"
 
 

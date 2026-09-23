@@ -226,8 +226,8 @@ def _build_reasons(
     менеджер может проверить любую цифру вручную и получить то же самое.
     """
     unit = sku.unit
-    base_demand_text = f"{forecast.base_demand:.2f}".rstrip("0").rstrip(".")
-    need_text = f"{need:.2f}".rstrip("0").rstrip(".")
+    base_demand_text = f"{forecast.base_demand:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+    need_text = f"{need:.2f}".rstrip("0").rstrip(".").replace(".", ",")
     reasons = [
         ReasonPart("Средние продажи", f"{base_demand_text} {unit}/мес"),
     ]

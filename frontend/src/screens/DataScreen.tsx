@@ -83,7 +83,7 @@ export default function DataScreen({ header, onCalculate, onReset }: Props) {
         <p className="tiny" style={{ marginTop: 10 }}>Данные загружаются и разбираются на сервере. Статус источника показан по фактическому ответу API.</p>
       </section>
 
-      <div className="data-two-column page-section">
+      <div className="data-three-column page-section">
         <section className="blueprint panel"><Corners />
           <h2 className="card-title">Параметры расчёта</h2>
           {settings ? <>
@@ -94,12 +94,30 @@ export default function DataScreen({ header, onCalculate, onReset }: Props) {
               <div className="field"><label htmlFor="excess">Избыточный запас, мес. спроса</label><input id="excess" className="input" type="number" min="0.5" step="0.5" value={settings.excess_months} onChange={event => setSettings({ ...settings, excess_months: Number(event.target.value) })} /></div>
             </div>
             <div className="scroll-table" style={{ marginTop: 18 }}><table className="table"><thead><tr><th>Поставщик</th><th>L, дн.</th><th>R, дн.</th><th>H</th></tr></thead><tbody>{settings.suppliers.map(supplier => <tr key={supplier.id}><td>{supplier.name}</td><td><input className="input" aria-label={`Срок поставки ${supplier.name}`} type="number" min="1" style={{ width: 76 }} value={supplier.lead_time_days} onChange={event => updateSupplier(supplier.id, 'lead_time_days', Number(event.target.value))} /></td><td><input className="input" aria-label={`Период пересмотра ${supplier.name}`} type="number" min="1" style={{ width: 76 }} value={supplier.review_days} onChange={event => updateSupplier(supplier.id, 'review_days', Number(event.target.value))} /></td><td>{supplier.horizon_days} дн.</td></tr>)}</tbody></table></div>
+            <p className="tiny" style={{ marginTop: 10 }}>L и R не переданы партнёром: значения — предположения до согласования.</p>
           </> : <p className="muted" style={{ marginTop: 12 }}>Загрузка настроек…</p>}
         </section>
         <section className="blueprint panel"><Corners />
-          <h2 className="card-title">Что можно рассчитать</h2>
-          <p className="tiny" style={{ marginTop: 6 }}>Готовность позиций по фактическому расчёту.</p>
-          <div className="scroll-table" style={{ marginTop: 14 }}><table className="table"><thead><tr><th>Поставщик</th><th className="numeric">Рассчитано</th><th className="numeric">Нужны данные</th><th className="numeric">Мало истории</th></tr></thead><tbody>{overview?.readiness.map(item => <tr key={item.supplier.id}><td>{item.supplier.name}</td><td className="numeric">{item.calculated}</td><td className="numeric">{item.needs_data}</td><td className="numeric">{item.insufficient_history}</td></tr>)}{overview?.readiness.length === 0 && <tr><td colSpan={4} className="muted">Запустите расчёт, чтобы увидеть готовность.</td></tr>}</tbody></table></div>
+          <h2 className="card-title">Правила по категориям</h2>
+          <div className="scroll-table" style={{ marginTop: 14 }}><table className="table"><thead><tr><th>Категория</th><th>Страховой запас, дн.</th><th>Сезонность на H</th></tr></thead><tbody><tr><td colSpan={3} className="muted">Правила категорий пока задаются в расчётном ядре и не меняются через API.</td></tr></tbody></table></div>
+          <p className="tiny" style={{ marginTop: 12 }}>Пустая сезонность в прототипе означает коэффициент бренда или SKU.</p>
+        </section>
+        <section className="blueprint panel"><Corners />
+          <h2 className="card-title">Типы документов</h2>
+          <div className="scroll-table" style={{ marginTop: 14 }}><table className="table"><thead><tr><th>Тип</th><th>Правило</th></tr></thead><tbody>{overview?.document_rules.map(rule => <tr key={rule.doc_type}><td>{rule.doc_type}</td><td>{rule.rule_text}</td></tr>)}</tbody></table></div>
+          <p className="tiny" style={{ marginTop: 12 }}>Правило возврата задаётся на сервере и учитывается при расчёте спроса.</p>
+        </section>
+      </div>
+
+      <div className="data-two-column page-section">
+        <section>
+          <h2 className="section-heading">Сопоставление по коду 1С</h2>
+          <div className="scroll-table"><table className="table"><thead><tr><th>Проверка</th><th className="numeric">Сопоставлено</th><th>Данные</th></tr></thead><tbody>{overview?.matching.map((item, index) => <tr key={index}><td>{item.label || '—'}</td><td className="numeric">{item.value_text || '—'}</td><td>—</td></tr>)}{overview && overview.matching.length === 0 && <tr><td colSpan={3} className="muted">Сводка сопоставления пока не передана API.</td></tr>}</tbody></table></div>
+        </section>
+        <section>
+          <h2 className="section-heading">Что можно рассчитать</h2>
+          <div className="scroll-table"><table className="table"><thead><tr><th>Поставщик</th><th className="numeric">Рассчитано</th><th className="numeric">Нужны данные</th><th className="numeric">Мало истории</th></tr></thead><tbody>{overview?.readiness.map(item => <tr key={item.supplier.id}><td>{item.supplier.name}</td><td className="numeric">{item.calculated}</td><td className="numeric">{item.needs_data}</td><td className="numeric">{item.insufficient_history}</td></tr>)}{overview?.readiness.length === 0 && <tr><td colSpan={4} className="muted">Запустите расчёт, чтобы увидеть готовность.</td></tr>}</tbody></table></div>
+          <p className="tiny" style={{ marginTop: 10 }}>Ноль продаж, отсутствие данных и неполный период различаются: «0» — продаж не было, «н/д» — позиции не было в выгрузке.</p>
         </section>
       </div>
 
@@ -107,10 +125,7 @@ export default function DataScreen({ header, onCalculate, onReset }: Props) {
         <h2 className="section-heading">Предположения в расчёте {overview?.assumptions.length ?? ''}</h2>
         <div className="scroll-table"><table className="table"><thead><tr><th>Параметр</th><th>Значение и источник</th><th>Тип</th></tr></thead><tbody>{overview?.assumptions.map(item => <tr key={item.label}><td>{item.label}</td><td>{item.value_text}</td><td><span className="tag tag-outline">{item.origin === 'synthetic' ? 'синтетика' : item.origin === 'real' ? 'реальные данные' : 'допущение'}</span></td></tr>)}</tbody></table></div>
       </section>
-      <section className="page-section">
-        <h2 className="section-heading">Правила обработки документов</h2>
-        <div className="scroll-table"><table className="table"><thead><tr><th>Документ</th><th>Правило</th></tr></thead><tbody>{overview?.document_rules.map(rule => <tr key={rule.doc_type}><td>{rule.doc_type}</td><td>{rule.rule_text}</td></tr>)}</tbody></table></div>
-      </section>
+      <section className="page-section"><h2 className="section-heading">Проблемы данных <span className="tiny">{overview?.issues.length ?? 0}</span></h2><div className="scroll-table"><table className="table"><thead><tr><th>Источник</th><th>Проверка</th><th>Проблема</th><th>Как учитывается в расчёте</th></tr></thead><tbody>{overview?.issues.map((issue, index) => <tr key={index}><td>—</td><td>{issue.label || '—'}</td><td>{issue.text || '—'}</td><td>—</td></tr>)}{overview && overview.issues.length === 0 && <tr><td colSpan={4} className="muted">Проблемы данных в ответе API не указаны.</td></tr>}</tbody></table></div></section>
     </div>
   )
 }

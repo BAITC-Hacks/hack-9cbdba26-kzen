@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&amp;family=Barlow+Condensed:wght@500;600&amp;display=swap">
+<link rel="stylesheet" href="_ds/industry-74cd29ad-8980-491a-a435-e918769db78a/styles.css">
+<script src="_ds/industry-74cd29ad-8980-491a-a435-e918769db78a/_ds_bundle.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#5980a6"></rect><text x="50" y="62" font-family="Arial" font-size="34" font-weight="700" fill="#f2f2f3" text-anchor="middle">ЭК</text></svg></template>
+<style>
+body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body)}
+a{color:var(--color-accent-700)}a:hover{color:var(--color-accent-900)}
+input[type=number]::-webkit-inner-spin-button{opacity:.4}
+</style>
+</helmet>
+<div style="min-height:100vh;display:flex;flex-direction:column;font-size:14px">
+  <nav class="nav" style="border-bottom:1px solid var(--color-divider);flex-wrap:wrap">
+    <div class="nav-brand" style="display:flex;align-items:baseline;gap:10px">Электрокомплект <span style="font-family:var(--font-body);font-weight:400;font-size:13px;color:var(--color-neutral-700)">Пополнение запасов</span></div>
+    <div style="display:flex;gap:2px;flex-wrap:wrap">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="5">
+        <button onClick="{{ t.go }}" style="font:inherit;font-size:14px;background:none;border:none;border-bottom:2px solid {{ t.line }};color:{{ t.color }};padding:8px 12px;cursor:pointer;display:flex;gap:8px;align-items:baseline" style-hover="color:var(--color-accent)"><span style="font-family:var(--font-heading);font-size:12px;opacity:.7">{{ t.n }}</span>{{ t.label }}</button>
+      </sc-for>
+    </div>
+  </nav>
+  <div style="display:flex;flex-wrap:wrap;gap:6px 24px;padding:10px 20px;font-size:12px;color:var(--color-neutral-700);border-bottom:1px solid var(--color-divider)">
+    <span>Склад: <b style="color:var(--color-text);font-weight:500">Алматы</b></span>
+    <span>Категория: <b style="color:var(--color-text);font-weight:500">{{ catLabel }}</b></span>
+    <span>Дата расчёта: <b style="color:var(--color-text);font-weight:500">{{ dateLabel }}</b></span>
+    <span>Срез данных: <b style="color:var(--color-text);font-weight:500">22.09.2026</b></span>
+    <span>Версия: <b style="color:var(--color-text);font-weight:500">{{ versionLabel }}</b></span>
+    <span>Роль: <b style="color:var(--color-text);font-weight:500">{{ roleLabel }}</b></span>
+    <span>Расчёт: <b style="color:var(--color-text);font-weight:500">{{ calcLabel }}</b></span>
+    <sc-if value="{{ staleSnap }}" hint-placeholder-val="{{ false }}"><span class="tag tag-outline">Снимок остатка старше 7 дней</span></sc-if>
+    <sc-if value="{{ restored }}" hint-placeholder-val="{{ false }}"><span class="tag tag-neutral">Сессия восстановлена</span></sc-if>
+    <sc-if value="{{ wiActive }}" hint-placeholder-val="{{ false }}"><span class="tag tag-outline">Сценарий «что если» активен</span></sc-if>
+    <span class="tag tag-neutral" style="margin-left:auto">{{ dataTag }}</span>
+  </div>
+
+  <sc-if value="{{ isData }}" hint-placeholder-val="{{ false }}">
+  <main style="padding:24px 20px 48px;max-width:1320px;width:100%;box-sizing:border-box;margin:0 auto;display:flex;flex-direction:column;gap:32px">
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between">
+      <div>
+        <h1 style="margin:0;font-size:34px;line-height:1.1">Данные и параметры</h1>
+        <p style="margin:6px 0 0;color:var(--color-neutral-700);max-width:760px;text-wrap:pretty">Выгрузки, их актуальность, проверки качества и настройки расчёта. Позиции с проблемами остаются в расчёте со статусом «нужны данные».</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost" onClick="{{ resetSession }}">Сбросить сессию</button><button class="btn btn-primary blueprint" onClick="{{ runCalc }}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Рассчитать рекомендации</button></div>
+    </div>
+
+    <section style="display:flex;flex-direction:column;gap:10px">
+      <h2 style="margin:0;font-size:24px">Источники</h2>
+      <div style="overflow-x:auto">
+      <table class="table" style="min-width:980px">
+        <thead><tr><th>Поставщик</th><th>Источник</th><th>Актуальность</th><th style="text-align:right">Объём (реальный)</th><th>Загруженный файл</th><th style="width:130px"></th></tr></thead>
+        <tbody>
+          <sc-for list="{{ files }}" as="f" hint-placeholder-count="12">
+            <tr>
+              <td><span class="tag tag-neutral">{{ f.brand }}</span></td>
+              <td><div>{{ f.type }}</div><div style="font-size:12px;color:var(--color-neutral-700)">{{ f.use }}</div></td>
+              <td style="white-space:nowrap">{{ f.date }}</td>
+              <td style="text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums">{{ f.vol }}</td>
+              <td style="font-size:12px;color:var(--color-neutral-700)">{{ f.loaded }}</td>
+              <td><label class="btn btn-secondary" style="cursor:pointer">Загрузить .xlsx<input type="file" accept=".xlsx,.xls" onChange="{{ f.pick }}" style="display:none"></label></td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+      </div>
+      <p style="margin:0;font-size:12px;color:var(--color-neutral-700);max-width:900px;text-wrap:pretty">Файл читается в браузере. Проверьте сопоставление колонок и нажмите «Импортировать» — позиции поставщика заменят демо-набор. Для продаж обязательны код 1С и диапазон месячных колонок: берутся последние 12, последний считается неполным. Детализация даёт кандидатов в разовые сделки; строки «Заказ покупателя» и «Приходная накладная» пропускаются, отрицательные строки — возвраты; их учёт задаётся правилом «Возврат» выше.</p>
+      <sc-for list="{{ fileMaps }}" as="f" hint-placeholder-count="0">
+        <div class="blueprint" style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline"><span class="card-title" style="font-size:18px">{{ f.title }}</span><span style="font-size:12px;color:var(--color-neutral-700)">{{ f.loaded }}</span></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
+            <div class="field"><label>Лист</label><select class="input" value="{{ f.sheet }}" onChange="{{ f.setSheet }}"><sc-for list="{{ f.sheetOpts }}" as="o" hint-placeholder-count="1"><option value="{{ o.v }}">{{ o.l }}</option></sc-for></select></div>
+            <div class="field"><label>Строка заголовков</label><input class="input" type="number" min="1" value="{{ f.hdrRow }}" onChange="{{ f.setHdr }}"></div>
+            <sc-for list="{{ f.fields }}" as="x" hint-placeholder-count="3">
+              <div class="field"><label>{{ x.label }}</label>
+                <sc-if value="{{ x.isRow }}" hint-placeholder-val="{{ false }}"><input class="input" type="number" min="1" value="{{ x.val }}" onChange="{{ x.set }}"></sc-if>
+                <sc-if value="{{ x.isCol }}" hint-placeholder-val="{{ true }}"><select class="input" value="{{ x.val }}" onChange="{{ x.set }}"><sc-for list="{{ x.opts }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.l }}</option></sc-for></select></sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+        <label style="display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer"><input type="checkbox" checked="{{ impRetIn }}" onChange="{{ toggleImpRetIn }}">Месячные продажи уже за вычетом возвратов</label>
+        <sc-for list="{{ imports }}" as="x" hint-placeholder-count="2">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-secondary" onClick="{{ x.run }}">Импортировать {{ x.name }}</button>
+            <sc-if value="{{ x.isImp }}" hint-placeholder-val="{{ false }}"><button class="btn btn-ghost" onClick="{{ x.reset }}">Вернуть демо</button></sc-if>
+            <span style="font-size:12px;color:var(--color-neutral-700)">{{ x.msg }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:24px;align-items:start">
+      <div class="blueprint" style="padding:18px;display:flex;flex-direction:column;gap:12px">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div class="card-title" style="font-size:22px">Параметры расчёта</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="field"><label>Склад</label><select class="input" disabled="{{ true }}"><option>Алматы</option></select></div>
+          <div class="field"><label>Категория</label><select class="input" value="{{ fCat }}" onChange="{{ setFCat }}"><sc-for list="{{ catOpts }}" as="o" hint-placeholder-count="7"><option value="{{ o.v }}">{{ o.l }}</option></sc-for></select></div>
+          <div class="field"><label>Дата расчёта</label><input class="input" type="date" min="2026-09-23" max="2026-12-31" value="{{ dateVal }}" onChange="{{ setDate }}"></div>
+          <div class="field"><label>Порог разовой сделки, × медианы</label><input class="input" type="number" min="1.5" step="0.5" value="{{ p.thr }}" onChange="{{ setThr }}"></div>
+          <div class="field"><label>Избыточный запас, мес. спроса</label><input class="input" type="number" min="0.5" step="0.5" value="{{ p.excessM }}" onChange="{{ setExcess }}"></div>
+        </div>
+        <table class="table">
+          <thead><tr><th>Поставщик</th><th>L, дн.</th><th>R, дн.</th><th>H</th></tr></thead>
+          <tbody>
+            <sc-for list="{{ lr }}" as="x" hint-placeholder-count="2">
+              <tr><td>{{ x.name }}</td><td><input class="input" type="number" min="1" value="{{ x.L }}" onChange="{{ x.setL }}" style="width:72px"></td><td><input class="input" type="number" min="1" value="{{ x.R }}" onChange="{{ x.setR }}" style="width:72px"></td><td style="white-space:nowrap">{{ x.H }} дн.</td></tr>
+            </sc-for>
+          </tbody>
+        </table>
+        <div style="font-size:12px;color:var(--color-neutral-700)">L и R не переданы партнёром: значения — предположения до согласования.</div>
+      </div>
+      <div class="blueprint" style="padding:18px;display:flex;flex-direction:column;gap:12px">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div class="card-title" style="font-size:22px">Правила по категориям</div>
+        <table class="table">
+          <thead><tr><th>Категория</th><th>Страховой запас, дн.</th><th>Сезонность на H</th></tr></thead>
+          <tbody>
+            <sc-for list="{{ catRules }}" as="x" hint-placeholder-count="6">
+              <tr><td>{{ x.label }}</td><td><input class="input" type="number" min="0" value="{{ x.v }}" onChange="{{ x.set }}" style="width:80px"></td><td><input class="input" type="number" min="0.1" step="0.05" value="{{ x.sv }}" onChange="{{ x.setSv }}" placeholder="как у SKU" style="width:110px"></td></tr>
+            </sc-for>
+          </tbody>
+        </table>
+        <div style="font-size:12px;color:var(--color-neutral-700)">Смысл категорий 1/2/3/5/7 не расшифрован; правила «категория → страховой запас» и «категория → сезонность» — предположения, влияют на расчёт. Пустая сезонность — коэффициент бренда или SKU.</div>
+      </div>
+      <div class="blueprint" style="padding:18px;display:flex;flex-direction:column;gap:12px">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div class="card-title" style="font-size:22px">Типы документов</div>
+        <table class="table">
+          <thead><tr><th>Тип</th><th>Правило</th></tr></thead>
+          <tbody>
+            <tr><td>Реализация</td><td>Продажа, входит в спрос</td></tr>
+            <tr><td>Возврат (отрицательное кол-во)</td><td>
+              <div class="seg">
+                <label class="seg-opt"><input type="radio" name="ret" checked="{{ retNet }}" onChange="{{ setRetNet }}" style="position:absolute;opacity:0;pointer-events:none">Вычитать в месяце</label>
+                <label class="seg-opt"><input type="radio" name="ret" checked="{{ retIgnore }}" onChange="{{ setRetIgnore }}" style="position:absolute;opacity:0;pointer-events:none">Не учитывать</label>
+              </div>
+            </td></tr>
+            <tr><td>Заказ покупателя</td><td>Не продажа; не входит в спрос</td></tr>
+            <tr><td>Приходная накладная (ИЭК)</td><td>Поступление; не входит в спрос</td></tr>
+          </tbody>
+        </table>
+        <div style="font-size:12px;color:var(--color-neutral-700)">Отрицательных строк: 115 у ИЭК, 302 у Systeme. Правило знака нужно подтвердить у партнёра.</div>
+      </div>
+    </section>
+
+    <section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr));gap:24px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+        <h2 style="margin:0;font-size:24px">Сопоставление по коду 1С</h2>
+        <table class="table">
+          <thead><tr><th>Проверка</th><th style="text-align:right">Сопоставлено</th><th>Данные</th></tr></thead>
+          <tbody>
+            <sc-for list="{{ matches }}" as="x" hint-placeholder-count="6">
+              <tr><td style="text-wrap:pretty">{{ x.k }}</td><td style="text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums">{{ x.v }}</td><td><span class="tag tag-neutral" style="white-space:nowrap">{{ x.src }}</span></td></tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+        <h2 style="margin:0;font-size:24px">Что можно рассчитать</h2>
+        <table class="table">
+          <thead><tr><th>Поставщик</th><th style="text-align:right">Рассчитано</th><th style="text-align:right">Нужны данные</th><th style="text-align:right">Мало истории</th></tr></thead>
+          <tbody>
+            <sc-for list="{{ ready }}" as="x" hint-placeholder-count="2">
+              <tr><td>{{ x.name }}</td><td style="text-align:right">{{ x.ok }}</td><td style="text-align:right">{{ x.check }}</td><td style="text-align:right">{{ x.hist }}</td></tr>
+            </sc-for>
+          </tbody>
+        </table>
+        <div style="font-size:12px;color:var(--color-neutral-700)">По демо-набору, с учётом ручных решений. Ноль продаж, отсутствие данных и неполный период различаются: «0» — продаж не было, «н/д» — позиции не было в выгрузке, «Сен*» — месяц не закончен и не входит в базу.</div>
+      </div>
+    </section>
+
+    <section style="display:flex;flex-direction:column;gap:10px">
+      <h2 style="margin:0;font-size:24px">Предположения в расчёте <span style="font-family:var(--font-body);font-weight:400;font-size:14px;color:var(--color-neutral-700)">{{ assumpCount }}</span></h2>
+      <div style="overflow-x:auto">
+      <table class="table">
+        <thead><tr><th>Что</th><th>Значение</th><th>Кем задано</th></tr></thead>
+        <tbody><sc-for list="{{ assumptions }}" as="a" hint-placeholder-count="6"><tr><td>{{ a.k }}</td><td>{{ a.v }}</td><td><span class="tag {{ a.tag }}" style="white-space:nowrap">{{ a.src }}</span></td></tr></sc-for></tbody>
+      </table>
+      </div>
+    </section>
+
+    <section style="display:flex;flex-direction:column;gap:10px">
+      <h2 style="margin:0;font-size:24px">Проблемы данных <span style="font-family:var(--font-body);font-weight:400;font-size:14px;color:var(--color-neutral-700)">10</span></h2>
+      <div style="overflow-x:auto">
+      <table class="table" style="min-width:760px">
+        <thead><tr><th style="width:90px">Источник</th><th style="width:130px">Проверка</th><th>Проблема</th><th>Как учитывается в расчёте</th></tr></thead>
+        <tbody>
+          <sc-for list="{{ issues }}" as="i" hint-placeholder-count="10">
+            <tr><td><span class="tag tag-neutral">{{ i.src }}</span></td><td style="font-size:12px">{{ i.c }}</td><td style="text-wrap:pretty">{{ i.t }}</td><td style="color:var(--color-neutral-700);text-wrap:pretty">{{ i.h }}</td></tr>
+          </sc-for>
+        </tbody>
+      </table>
+      </div>
+    </section>
+  </main>
+  </sc-if>
+
+  <sc-if value="{{ isRecs }}" hint-placeholder-val="{{ true }}">
+  <main style="padding:24px 20px 48px;max-width:1440px;width:100%;box-sizing:border-box;margin:0 auto;display:flex;flex-direction:column;gap:18px">
+    <div>
+      <h1 style="margin:0;font-size:34px;line-height:1.1">Рекомендованные заказы</h1>
+      <p style="margin:6px 0 0;color:var(--color-neutral-700)">Нажмите строку, чтобы открыть расчёт по артикулу.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(200px,2fr) repeat(4,minmax(140px,1fr));gap:10px;align-items:end">
+      <div class="field"><label>Поиск: код 1С, артикул, название</label><input class="input" type="search" value="{{ q }}" onChange="{{ setQ }}" placeholder="например, City9"></div>
+      <div class="field"><label>Поставщик</label><select class="input" value="{{ fBrand }}" onChange="{{ setFBrand }}"><option value="all">Все</option><option value="SE">Systeme Electric</option><option value="IEK">ИЭК</option></select></div>
+      <div class="field"><label>Категория</label><select class="input" value="{{ fCat }}" onChange="{{ setFCat }}"><sc-for list="{{ catOpts }}" as="o" hint-placeholder-count="7"><option value="{{ o.v }}">{{ o.l }}</option></sc-for></select></div>
+      <div class="field"><label>Статус</label><select class="input" value="{{ fStatus }}" onChange="{{ setFStatus }}"><option value="all">Все</option><option value="order">Заказать</option><option value="enough">Запаса достаточно</option><option value="check">Нужны данные</option><option value="hist">Недостаточно истории</option></select></div>
+      <div class="field"><label>Сортировка</label><select class="input" value="{{ sort }}" onChange="{{ setSort }}"><option value="urg">По сроку дефицита</option><option value="code">По коду 1С</option></select></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px">
+      <sc-for list="{{ counts }}" as="c" hint-placeholder-count="5">
+        <div class="blueprint" style="padding:12px 14px;display:flex;flex-direction:column;gap:2px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <span style="font-size:12px;color:var(--color-neutral-700)">{{ c.label }}</span>
+          <span style="font-family:var(--font-heading);font-size:30px;font-weight:600;line-height:1">{{ c.n }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px">Тренды по категориям</h2><button class="btn btn-ghost" onClick="{{ toggleTrends }}">{{ trendsBtn }}</button></div>
+    <sc-if value="{{ showTrends }}" hint-placeholder-val="{{ false }}">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px">
+        <sc-for list="{{ catTrends }}" as="t" hint-placeholder-count="4">
+          <div class="blueprint" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:500">{{ t.label }}</span><span style="font-variant-numeric:tabular-nums;font-size:13px;white-space:nowrap">{{ t.growth }}</span></div>
+            <div style="display:flex;gap:2px;align-items:flex-end;height:40px"><sc-for list="{{ t.bars }}" as="b" hint-placeholder-count="12"><div style="flex:1;height:{{ b.h }}px;background:var(--color-accent);opacity:{{ b.op }}"></div></sc-for></div>
+            <span style="font-size:12px;color:var(--color-neutral-700)">{{ t.sub }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin:0;font-size:12px;color:var(--color-neutral-700);text-wrap:pretty">Регулярный спрос после поправок; суммируется только в пределах одной единицы измерения. Наклон — медиана попарных наклонов (Тейл–Сен) до последнего полного месяца, без поправки на сезон.</p>
+    </sc-if>
+    <div class="blueprint" style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-end">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div style="display:flex;flex-direction:column;gap:2px;margin-right:auto"><span class="card-title" style="font-size:18px">Что если</span><span style="font-size:12px;color:var(--color-neutral-700)">Сценарий не сохраняется в версию; утверждение недоступно, пока он активен.</span></div>
+      <div class="field"><label>Задержка всех поставок, дн.</label><input class="input" type="number" value="{{ wi.delay }}" onChange="{{ setWiDelay }}" style="width:120px"></div>
+      <div class="field"><label>Изменение спроса, %</label><input class="input" type="number" step="5" value="{{ wi.dem }}" onChange="{{ setWiDem }}" style="width:120px"></div>
+      <button class="btn btn-ghost" onClick="{{ resetWi }}" disabled="{{ wiInactive }}">Сбросить</button>
+    </div>
+    <sc-for list="{{ tgroups }}" as="g" hint-placeholder-count="2">
+      <section style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;gap:12px;align-items:baseline"><h2 style="margin:0;font-size:22px">{{ g.name }}</h2><span style="font-size:12px;color:var(--color-neutral-700)">{{ g.count }}</span><sc-if value="{{ g.paged }}" hint-placeholder-val="{{ false }}"><span style="flex:1"></span><button class="btn btn-ghost" onClick="{{ g.prev }}">← Назад</button><button class="btn btn-ghost" onClick="{{ g.next }}">Вперёд →</button></sc-if></div>
+        <div style="overflow-x:auto">
+        <table class="table" style="min-width:1180px">
+          <thead><tr><th>Поставщик</th><th>Код 1С</th><th>Артикул</th><th>Наименование</th><th>Ед.</th><th style="text-align:right">Свободно</th><th>Путь · ETA</th><th style="text-align:right">Заказ</th><th>Обоснование</th><th>Срочность</th><th>Статус</th></tr></thead>
+          <tbody>
+            <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="6">
+              <tr onClick="{{ r.open }}" style="cursor:pointer">
+                <td style="white-space:nowrap;color:var(--color-neutral-700)">{{ r.brand }}</td>
+                <td style="font-variant-numeric:tabular-nums;white-space:nowrap">{{ r.code }}</td>
+                <td style="white-space:nowrap;color:var(--color-neutral-700)">{{ r.art }}</td>
+                <td style="max-width:280px">{{ r.name }}</td>
+                <td>{{ r.unit }}</td>
+                <td style="text-align:right;font-variant-numeric:tabular-nums">{{ r.free }}</td>
+                <td style="white-space:nowrap;font-variant-numeric:tabular-nums">{{ r.inb }}</td>
+                <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap">{{ r.qty }}<span style="color:var(--color-accent);font-weight:400">{{ r.edited }}</span></td>
+                <td style="font-size:12px;color:var(--color-neutral-800);max-width:260px;font-variant-numeric:tabular-nums">{{ r.why }}</td>
+                <td style="white-space:nowrap">{{ r.urg }}</td>
+                <td><div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start"><span class="tag {{ r.tag }}" style="white-space:nowrap">{{ r.status }}</span><sc-if value="{{ r.excess }}" hint-placeholder-val="{{ false }}"><span class="tag tag-outline" style="white-space:nowrap">Избыточный запас</span></sc-if></div></td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+        </div>
+      </section>
+    </sc-for>
+    <sc-if value="{{ noRows }}" hint-placeholder-val="{{ false }}"><p style="margin:0;color:var(--color-neutral-700)">Нет позиций по выбранным фильтрам.</p></sc-if>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center">
+      <span style="font-size:12px;color:var(--color-neutral-700)">Заказ — в единицах закупки. ✎ — изменено вручную. «—» — заказ не рассчитан до устранения проблемы; это не нулевой заказ. «Избыточный запас» — остаток и путь превышают потребность на H более чем на 2 месяца спроса.</span>
+      <button class="btn btn-secondary" onClick="{{ goReview }}">К проверке и утверждению →</button>
+    </div>
+  </main>
+  </sc-if>
+
+  <sc-if value="{{ isSku }}" hint-placeholder-val="{{ false }}">
+  <main style="padding:24px 20px 48px;max-width:1400px;width:100%;box-sizing:border-box;margin:0 auto;display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-ghost" onClick="{{ goRecs }}">← Все позиции</button>
+      <span style="flex:1"></span>
+      <button class="btn btn-secondary" onClick="{{ prevSku }}">← Пред.</button>
+      <button class="btn btn-secondary" onClick="{{ nextSku }}">След. →</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between">
+      <div style="min-width:0">
+        <div class="card-kicker">{{ s.brandName }} · {{ s.code }} · {{ s.art }} · кат. {{ s.cat }}</div>
+        <h1 style="margin:4px 0 0;font-size:32px;line-height:1.1;text-wrap:pretty">{{ s.name }}</h1>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="tag {{ s.tag }}">{{ s.status }}</span><sc-if value="{{ s.excess }}" hint-placeholder-val="{{ false }}"><span class="tag tag-outline">Избыточный запас</span></sc-if><span style="font-size:13px;color:var(--color-neutral-700)">{{ s.urg }}</span></div>
+    </div>
+    <sc-if value="{{ s.hasIssues }}" hint-placeholder-val="{{ false }}">
+      <div class="blueprint" style="padding:14px 16px;display:flex;flex-direction:column;gap:12px;border-color:var(--color-accent)">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <sc-for list="{{ s.issues }}" as="i" hint-placeholder-count="1"><div style="font-size:13px;color:var(--color-accent-900)">Нужны данные: {{ i }}</div></sc-for>
+        <div style="display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end">
+          <sc-if value="{{ s.needFree }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:8px;align-items:flex-end"><div class="field"><label>Свободный остаток, {{ s.unit }}</label><input class="input" type="number" min="0" value="{{ d.free }}" onChange="{{ setDFree }}" style="width:140px"></div><button class="btn btn-secondary" onClick="{{ applyFree }}">Применить</button></div>
+          </sc-if>
+          <sc-if value="{{ s.needUnit }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:8px;align-items:flex-end"><div class="field"><label>{{ s.unit }} в 1 {{ s.pu }} (кандидат {{ s.fCand }})</label><input class="input" type="number" min="1" value="{{ d.f }}" onChange="{{ setDF }}" style="width:140px"></div><button class="btn btn-secondary" onClick="{{ applyF }}">Подтвердить</button></div>
+          </sc-if>
+          <sc-if value="{{ s.needMoq }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:8px;align-items:flex-end"><div class="field"><label>Кратность = минимум, {{ s.pu }}</label><input class="input" type="number" min="1" value="{{ d.k }}" onChange="{{ setDK }}" style="width:140px"></div><button class="btn btn-secondary" onClick="{{ applyK }}">Применить</button></div>
+          </sc-if>
+          <sc-if value="{{ s.needSem }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="font-size:12px;color:var(--color-neutral-700)">«Мин. разр. к отгр.» = {{ s.k0 }} — это</span><button class="btn btn-secondary" onClick="{{ semMin }}">минимальная партия</button><button class="btn btn-secondary" onClick="{{ semMult }}">кратность</button></div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:24px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:24px;min-width:0">
+        <div class="blueprint" style="padding:18px;display:flex;flex-direction:column;gap:14px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap"><div class="card-title" style="font-size:20px">История и прогноз, {{ s.unit }}</div><span style="font-size:12px;color:var(--color-neutral-700)">база: мар–авг 2026 (подсвечено)</span></div>
+          <div style="display:flex;gap:3px;align-items:stretch">
+            <sc-for list="{{ s.bars }}" as="b" hint-placeholder-count="14">
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+                <div style="height:190px;display:flex;flex-direction:column;justify-content:flex-end;background:{{ b.bg }}">
+                  <div style="font-size:10px;text-align:center;color:var(--color-accent-800);line-height:1.2">{{ b.evLabel }}</div>
+                  <div style="height:{{ b.hEv }}px;border:{{ b.evBorder }};border-bottom:none;box-sizing:border-box"></div>
+                  <div style="height:{{ b.hFc }}px;border:{{ b.fcBorder }};background:var(--color-accent-100);box-sizing:border-box"></div>
+                  <div style="height:{{ b.hRest }}px;background:repeating-linear-gradient(135deg,var(--color-accent-300) 0 3px,transparent 3px 6px);border:{{ b.restBorder }};box-sizing:border-box"></div>
+                  <div style="height:{{ b.hIncl }}px;background:var(--color-accent-800)"></div>
+                  <div style="height:{{ b.hReg }}px;background:var(--color-accent);opacity:{{ b.op }}"></div>
+                </div>
+                <div style="font-size:10px;text-align:center;color:var(--color-neutral-700);white-space:nowrap;overflow:hidden">{{ b.label }}</div>
+                <div style="font-size:11px;text-align:center;font-variant-numeric:tabular-nums">{{ b.val }}</div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--color-neutral-700)">
+            <span style="display:flex;gap:6px;align-items:center"><i style="width:10px;height:10px;background:var(--color-accent)"></i>Продажи (с возвратами)</span>
+            <span style="display:flex;gap:6px;align-items:center"><i style="width:10px;height:10px;background:repeating-linear-gradient(135deg,var(--color-accent-300) 0 3px,transparent 3px 6px);border:1px solid var(--color-accent-300)"></i>Восстановленный спрос</span>
+            <span style="display:flex;gap:6px;align-items:center"><i style="width:10px;height:10px;border:1px dashed var(--color-accent)"></i>Исключённая разовая сделка</span>
+            <span style="display:flex;gap:6px;align-items:center"><i style="width:10px;height:10px;background:var(--color-accent-800)"></i>Возвращена в спрос</span>
+            <span style="display:flex;gap:6px;align-items:center"><i style="width:10px;height:10px;background:var(--color-accent-100);border:1px dashed var(--color-accent-700)"></i>Прогноз</span>
+            <span>Сен* — неполный месяц; н/д — позиции не было</span>
+          </div>
+        </div>
+        <div class="blueprint" style="padding:18px;display:flex;flex-direction:column;gap:12px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div class="card-title" style="font-size:20px">Поправки спроса</div>
+          <sc-for list="{{ s.events }}" as="e" hint-placeholder-count="1">
+            <div style="display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--color-divider)">
+              <div style="min-width:0;flex:1 1 260px"><div style="font-weight:500">{{ e.title }}</div><div style="font-size:12px;color:var(--color-neutral-700)">{{ e.note }}</div></div>
+              <button class="btn btn-secondary" onClick="{{ e.toggle }}">{{ e.action }}</button>
+            </div>
+          </sc-for>
+          <sc-for list="{{ s.regular }}" as="e" hint-placeholder-count="0">
+            <div style="padding:10px 0;border-top:1px solid var(--color-divider)"><div style="font-weight:500">{{ e.title }}</div><div style="font-size:12px;color:var(--color-neutral-700)">{{ e.note }}</div></div>
+          </sc-for>
+          <sc-for list="{{ s.stockouts }}" as="o" hint-placeholder-count="1">
+            <div style="display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--color-divider)">
+              <div style="min-width:0;flex:1 1 260px"><div style="font-weight:500">Нет на складе: {{ o.title }}</div><div style="font-size:12px;color:var(--color-neutral-700)">{{ o.note }}</div></div>
+              <sc-if value="{{ o.canRemove }}" hint-placeholder-val="{{ false }}"><button class="btn btn-ghost" onClick="{{ o.remove }}">Удалить</button></sc-if>
+            </div>
+          </sc-for>
+          <sc-for list="{{ s.stockCand }}" as="o" hint-placeholder-count="0">
+            <div style="display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--color-divider)">
+              <div style="min-width:0;flex:1 1 260px"><div style="font-weight:500">Кандидат в stockout: {{ o.title }}</div><div style="font-size:12px;color:var(--color-neutral-700)">Из месячных остатков. Не применяется автоматически: ноль на начало месяца не доказывает отсутствие весь месяц.</div></div>
+              <button class="btn btn-secondary" onClick="{{ o.confirm }}">Подтвердить (50% месяца)</button>
+            </div>
+          </sc-for>
+          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--color-divider)">
+            <div class="field"><label>Подтверждённый период отсутствия</label><select class="input" value="{{ d.soM }}" onChange="{{ setDSoM }}"><sc-for list="{{ s.soOpts }}" as="o" hint-placeholder-count="6"><option value="{{ o.v }}">{{ o.l }}</option></sc-for></select></div>
+            <div class="field"><label>Товар был доступен, % месяца</label><input class="input" type="number" min="5" max="95" value="{{ d.soA }}" onChange="{{ setDSoA }}" style="width:110px"></div>
+            <button class="btn btn-secondary" onClick="{{ addSo }}">Добавить</button>
+          </div>
+          <div style="padding:10px 0 0;border-top:1px solid var(--color-divider);display:grid;grid-template-columns:1fr auto;gap:6px 16px;font-size:13px">
+            <span style="color:var(--color-neutral-700)">Средние продажи мар–авг, сырые (все документы)</span><span style="font-variant-numeric:tabular-nums">{{ s.rawAvg }}</span>
+            <span style="color:var(--color-neutral-700)">Регулярный спрос после поправок</span><span style="font-variant-numeric:tabular-nums;font-weight:600">{{ s.avg }}</span>
+            <span style="color:var(--color-neutral-700)">Сезонный коэффициент на H · {{ s.seasonSrc }}</span><span style="font-variant-numeric:tabular-nums">{{ s.season }}</span>
+            <span style="color:var(--color-neutral-700)">Прирост спроса · {{ s.trendSrc }}</span><span style="font-variant-numeric:tabular-nums">{{ s.trend }}</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+            <div class="field"><label>Прогноз прироста менеджера, %</label><input class="input" type="number" step="1" value="{{ d.trend }}" onChange="{{ setDTrend }}" style="width:120px"></div>
+            <button class="btn btn-secondary" onClick="{{ applyTrend }}">Применить</button>
+            <sc-if value="{{ s.trendManual }}" hint-placeholder-val="{{ false }}"><button class="btn btn-ghost" onClick="{{ resetTrend }}">Вернуть исходный</button></sc-if>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px"><span style="color:var(--color-neutral-700)">Оценка по истории (Тейл–Сен, без поправки на сезон): <b style="color:var(--color-text);font-weight:600">{{ s.estLabel }}</b></span><button class="btn btn-ghost" onClick="{{ useEst }}">Использовать</button></div>
+        </div>
+        <div class="blueprint" style="padding:18px;display:flex;flex-direction:column;gap:10px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div class="card-title" style="font-size:20px">Источники входов</div>
+          <table class="table">
+            <thead><tr><th>Вход</th><th>Откуда</th><th></th></tr></thead>
+            <tbody><sc-for list="{{ s.prov }}" as="x" hint-placeholder-count="7"><tr><td style="white-space:nowrap">{{ x.k }}</td><td style="font-size:12px;text-wrap:pretty">{{ x.v }}</td><td><span class="tag {{ x.tag }}" style="white-space:nowrap">{{ x.src }}</span></td></tr></sc-for></tbody>
+          </table>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:24px;min-width:0">
+        <div class="blueprint" style="padding:18px;display:flex;flex-direction:column;gap:10px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div class="card-title" style="font-size:20px">Расчёт заказа</div>
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ s.steps }}" as="st" hint-placeholder-count="7">
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 16px;padding:8px 0;border-top:{{ st.line }}">
+                <span style="font-weight:{{ st.w }}">{{ st.k }}</span>
+                <span style="font-variant-numeric:tabular-nums;text-align:right;font-weight:{{ st.w }};font-family:var(--font-heading);font-size:{{ st.size }}px">{{ st.v }}</span>
+                <span style="font-size:12px;color:var(--color-neutral-700);grid-column:1 / -1">{{ st.note }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <p style="margin:6px 0 0;padding:12px;font-size:13px;line-height:1.5;background:var(--color-accent-100);color:var(--color-accent-900);text-wrap:pretty">{{ s.text }}</p>
+          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--color-divider)">
+            <div class="field"><label>L для позиции, дн.</label><input class="input" type="number" min="1" value="{{ d.L }}" onChange="{{ setDL }}" placeholder="{{ s.Lph }}" style="width:110px"></div>
+            <div class="field"><label>R для позиции, дн.</label><input class="input" type="number" min="1" value="{{ d.R }}" onChange="{{ setDR }}" placeholder="{{ s.Rph }}" style="width:110px"></div>
+            <div class="field"><label>Сезонность на H</label><input class="input" type="number" min="0.1" step="0.05" value="{{ d.season }}" onChange="{{ setDSeason }}" placeholder="{{ s.sph }}" style="width:110px"></div>
+            <button class="btn btn-secondary" onClick="{{ applySkuParams }}">Применить</button>
+            <sc-if value="{{ s.hasSkuParams }}" hint-placeholder-val="{{ false }}"><button class="btn btn-ghost" onClick="{{ resetSkuParams }}">Как у поставщика</button></sc-if>
+          </div>
+        </div>
+        <div class="blueprint" style="padding:18px;display:flex;flex-direction:column;gap:8px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div class="card-title" style="font-size:20px">Остаток и поступления</div>
+          <div style="font-size:13px;display:grid;grid-template-columns:1fr auto;gap:6px 16px">
+            <span style="color:var(--color-neutral-700)">Свободный остаток на 22.09</span><span style="font-variant-numeric:tabular-nums">{{ s.freeLabel }}</span>
+            <span style="color:var(--color-neutral-700)">Резерв (уже вычтен из свободного, повторно не вычитается)</span><span style="font-variant-numeric:tabular-nums">{{ s.reserve }}</span>
+            <span style="color:var(--color-neutral-700)">Запаса хватит примерно на</span><span style="font-variant-numeric:tabular-nums">{{ s.coverLabel }}</span>
+          </div>
+          <sc-for list="{{ s.inbound }}" as="x" hint-placeholder-count="1">
+            <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:10px 0 0;border-top:1px solid var(--color-divider);opacity:{{ x.op }}">
+              <div style="min-width:0;flex:1 1 220px"><div style="font-weight:500">{{ x.qtyLabel }} · ETA {{ x.date }}</div><div style="font-size:12px;color:var(--color-neutral-700)">{{ x.doc }} · {{ x.where }}</div></div>
+              <button class="btn btn-ghost" onClick="{{ x.toggle }}">{{ x.action }}</button>
+            </div>
+          </sc-for>
+          <sc-if value="{{ s.early }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13px;color:var(--color-accent-900);background:var(--color-accent-100);padding:10px">Поставка внутри горизонта приходит позже ожидаемого исчерпания запаса — ранний дефицит сохраняется.</div>
+          </sc-if>
+        </div>
+        <div class="blueprint" style="padding:18px;display:flex;flex-direction:column;gap:10px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div class="card-title" style="font-size:20px">Корректировка менеджера</div>
+          <div style="display:grid;grid-template-columns:minmax(0,150px) minmax(0,1fr);gap:10px">
+            <div class="field"><label>Количество, {{ s.pu }}</label><input class="input" type="number" min="0" value="{{ d.qty }}" onChange="{{ setDQty }}" placeholder="{{ s.qtyPh }}"></div>
+            <div class="field"><label>Причина (обязательно)</label><input class="input" type="text" value="{{ d.reason }}" onChange="{{ setDReason }}" placeholder="Например: подтверждён проектный заказ"></div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <button class="btn btn-primary blueprint" onClick="{{ applyManual }}" disabled="{{ manualDisabled }}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Применить</button>
+            <sc-if value="{{ s.isManual }}" hint-placeholder-val="{{ false }}"><button class="btn btn-ghost" onClick="{{ resetManual }}">Вернуть рекомендацию</button></sc-if>
+            <span style="font-size:12px;color:var(--color-neutral-700)">{{ s.manualNote }}</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--color-divider)">
+            <div class="field"><label>Цена закупки за 1 {{ s.pu }}</label><input class="input" type="number" min="0" step="0.01" value="{{ d.price }}" onChange="{{ setDPrice }}" style="width:150px"></div>
+            <button class="btn btn-secondary" onClick="{{ applyPrice }}">Применить</button>
+            <div style="display:flex;flex-direction:column;font-size:12px;color:var(--color-neutral-700)"><span>Цена: {{ s.priceLabel }}</span><span>Стоимость заказа: <b style="color:var(--color-text)">{{ s.costLabel }}</b></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+  </sc-if>
+
+  <sc-if value="{{ isReview }}" hint-placeholder-val="{{ false }}">
+  <main style="padding:24px 20px 48px;max-width:1320px;width:100%;box-sizing:border-box;margin:0 auto;display:flex;flex-direction:column;gap:24px">
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between">
+      <div>
+        <h1 style="margin:0;font-size:34px;line-height:1.1">Проверка и экспорт</h1>
+        <p style="margin:6px 0 0;color:var(--color-neutral-700);max-width:720px;text-wrap:pretty">Утверждение фиксирует версию списка. Заказ поставщику автоматически не отправляется. Любое изменение после утверждения создаёт новую версию. Клиенты в данных — только обезличенные ID.</p>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <span class="tag {{ approvalTag }}">{{ approvalLabel }}</span>
+        <sc-if value="{{ isManager }}" hint-placeholder-val="{{ true }}"><button class="btn btn-primary blueprint" onClick="{{ submit }}" disabled="{{ submitDisabled }}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Отправить на согласование</button></sc-if>
+        <sc-if value="{{ isHead }}" hint-placeholder-val="{{ false }}"><button class="btn btn-secondary" onClick="{{ reject }}" disabled="{{ rejectDisabled }}">Вернуть на доработку</button><button class="btn btn-primary blueprint" onClick="{{ approve }}" disabled="{{ approveDisabled }}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>{{ approveLabel }}</button></sc-if>
+        <button class="btn btn-secondary" onClick="{{ exportAll }}" disabled="{{ exportDisabled }}">Экспорт всех (CSV)</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end">
+      <div class="field"><label>Роль</label><div class="seg"><label class="seg-opt"><input type="radio" name="role" checked="{{ roleManager }}" onChange="{{ setRoleManager }}" style="position:absolute;opacity:0;pointer-events:none">Менеджер закупа</label><label class="seg-opt"><input type="radio" name="role" checked="{{ roleHead }}" onChange="{{ setRoleHead }}" style="position:absolute;opacity:0;pointer-events:none">Руководитель закупок</label></div></div>
+      <sc-if value="{{ isHead }}" hint-placeholder-val="{{ false }}"><div class="field" style="flex:1 1 260px"><label>Комментарий при возврате</label><input class="input" type="text" value="{{ rejectNote }}" onChange="{{ setRejectNote }}" placeholder="Что нужно проверить"></div></sc-if>
+      <span style="font-size:13px;color:var(--color-neutral-700);flex:1 1 260px;text-wrap:pretty">{{ flowHint }}</span>
+    </div>
+    <sc-if value="{{ wiActive }}" hint-placeholder-val="{{ false }}"><div style="font-size:13px;color:var(--color-accent-900);background:var(--color-accent-100);padding:10px">Активен сценарий «что если». Сбросьте его на экране рекомендаций, чтобы отправить или утвердить версию.</div></sc-if>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));gap:24px;align-items:start">
+      <sc-for list="{{ groups }}" as="g" hint-placeholder-count="2">
+        <div class="blueprint" style="padding:18px;display:flex;flex-direction:column;gap:10px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><div class="card-title" style="font-size:22px">{{ g.name }}</div><span style="font-size:12px;color:var(--color-neutral-700)">{{ g.summary }}</span></div><button class="btn btn-secondary" onClick="{{ g.export }}" disabled="{{ exportDisabled }}">Экспорт по поставщику</button></div>
+          <table class="table">
+            <thead><tr><th>Код 1С</th><th>Наименование</th><th style="text-align:right">Рекомендация</th><th style="text-align:right">Итог</th><th style="text-align:right">Сумма</th></tr></thead>
+            <tbody>
+              <sc-for list="{{ g.lines }}" as="l" hint-placeholder-count="4">
+                <tr><td style="white-space:nowrap;font-variant-numeric:tabular-nums">{{ l.code }}</td><td>{{ l.name }}<div style="font-size:12px;color:var(--color-accent-800)">{{ l.reason }}</div></td><td style="text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--color-neutral-700)">{{ l.rec }}</td><td style="text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:600">{{ l.qty }}<span style="color:var(--color-accent);font-weight:400">{{ l.edited }}</span></td><td style="text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--color-neutral-700)">{{ l.sum }}</td></tr>
+              </sc-for>
+            </tbody>
+          </table>
+          <div style="font-size:13px">{{ g.costLine }}</div>
+          <div style="font-size:12px;color:var(--color-accent-800)">{{ g.pending }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div class="blueprint" style="padding:18px;display:flex;flex-direction:column;gap:12px">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="card-title" style="font-size:20px">Формат экспорта</div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-end">
+        <div class="field"><label>Файл</label><select class="input" value="{{ exp.fmt }}" onChange="{{ setExpFmt }}"><option value="csv">CSV</option><option value="xlsx">Excel (.xlsx)</option></select></div>
+        <div class="field"><label>Разделитель CSV</label><select class="input" value="{{ exp.sep }}" onChange="{{ setExpSep }}"><option value=";">Точка с запятой</option><option value=",">Запятая</option><option value="tab">Табуляция</option></select></div>
+        <div class="field"><label>Кодировка CSV</label><select class="input" value="{{ exp.enc }}" onChange="{{ setExpEnc }}"><option value="utf8">UTF-8 (BOM)</option><option value="cp1251">Windows-1251</option></select></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px 18px">
+        <sc-for list="{{ expCols }}" as="c" hint-placeholder-count="13"><label style="display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer"><input type="checkbox" checked="{{ c.on }}" onChange="{{ c.toggle }}">{{ c.label }}</label></sc-for>
+      </div>
+      <p style="margin:0;font-size:12px;color:var(--color-neutral-700);text-wrap:pretty">Шаблон настраивается под импорт 1С: формат, разделитель, кодировка, набор колонок. Точный состав полей, типы и единицы нужно сверить с образцом успешного файла от партнёра — он пока не передан.</p>
+    </div>
+    <div>
+      <h2 style="margin:0 0 10px;font-size:24px">Утверждённые версии</h2>
+      <sc-if value="{{ noVersions }}" hint-placeholder-val="{{ true }}"><p style="margin:0;color:var(--color-neutral-700)">Пока нет утверждённых версий.</p></sc-if>
+      <sc-if value="{{ hasVersions }}" hint-placeholder-val="{{ false }}">
+        <table class="table"><thead><tr><th>Версия</th><th>Утверждена</th><th>Кем</th><th style="text-align:right">Строк</th><th></th></tr></thead>
+          <tbody><sc-for list="{{ versionsList }}" as="x" hint-placeholder-count="1"><tr><td>{{ x.v }}</td><td>{{ x.at }}</td><td>{{ x.by }}</td><td style="text-align:right">{{ x.n }}</td><td style="text-align:right"><button class="btn btn-ghost" onClick="{{ x.pick }}">{{ x.btn }}</button></td></tr></sc-for></tbody></table>
+      </sc-if>
+      <sc-if value="{{ hasCmp }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px"><div class="card-title" style="font-size:18px">{{ cmpTitle }}</div>
+          <sc-if value="{{ noDiff }}" hint-placeholder-val="{{ false }}"><p style="margin:0;color:var(--color-neutral-700)">Отличий нет.</p></sc-if>
+          <sc-if value="{{ hasDiff }}" hint-placeholder-val="{{ false }}"><table class="table"><thead><tr><th>Код 1С</th><th>Наименование</th><th style="text-align:right">В версии</th><th style="text-align:right">Сейчас</th></tr></thead><tbody><sc-for list="{{ diff }}" as="x" hint-placeholder-count="2"><tr><td style="white-space:nowrap">{{ x.code }}</td><td>{{ x.name }}</td><td style="text-align:right;white-space:nowrap">{{ x.a }}</td><td style="text-align:right;white-space:nowrap;font-weight:600">{{ x.b }}</td></tr></sc-for></tbody></table></sc-if>
+        </div>
+      </sc-if>
+      <h2 style="margin:28px 0 10px;font-size:24px">Журнал изменений</h2>
+      <sc-if value="{{ hasLog }}" hint-placeholder-val="{{ false }}">
+        <table class="table">
+          <thead><tr><th style="width:80px">Версия</th><th>Изменение</th><th>Кто</th><th>Когда</th></tr></thead>
+          <tbody><sc-for list="{{ log }}" as="l" hint-placeholder-count="2"><tr><td>{{ l.v }}</td><td>{{ l.text }}</td><td style="white-space:nowrap;font-size:12px">{{ l.who }}</td><td style="white-space:nowrap;font-size:12px">{{ l.at }}</td></tr></sc-for></tbody>
+        </table>
+      </sc-if>
+      <sc-if value="{{ noLog }}" hint-placeholder-val="{{ true }}"><p style="margin:0;color:var(--color-neutral-700)">Изменений нет — список совпадает с рекомендацией.</p></sc-if>
+    </div>
+  </main>
+  </sc-if>
+
+  <sc-if value="{{ isTests }}" hint-placeholder-val="{{ false }}">
+  <main style="padding:24px 20px 48px;max-width:1320px;width:100%;box-sizing:border-box;margin:0 auto;display:flex;flex-direction:column;gap:24px">
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between">
+      <div>
+        <h1 style="margin:0;font-size:34px;line-height:1.1">Проверки по ТЗ</h1>
+        <p style="margin:6px 0 0;color:var(--color-neutral-700);max-width:760px;text-wrap:pretty">Сценарии запускаются на синтетическом SKU той же функцией расчёта, что и рекомендации, с текущими параметрами. Подтверждают поведение алгоритма, но не качество прогноза на реальных данных.</p>
+      </div>
+      <span class="tag {{ testsTag }}">{{ testsSummary }}</span>
+    </div>
+    <div style="overflow-x:auto">
+    <table class="table" style="min-width:900px">
+      <thead><tr><th style="width:36px">№</th><th>Сценарий</th><th>Ожидание</th><th>Результат</th><th style="width:110px"></th></tr></thead>
+      <tbody>
+        <sc-for list="{{ tests }}" as="t" hint-placeholder-count="12">
+          <tr><td style="color:var(--color-neutral-700)">{{ t.n }}</td><td style="text-wrap:pretty">{{ t.name }}</td><td style="font-size:13px;color:var(--color-neutral-700);text-wrap:pretty">{{ t.exp }}</td><td style="font-size:13px;font-variant-numeric:tabular-nums;text-wrap:pretty">{{ t.act }}</td><td><span class="tag {{ t.tag }}">{{ t.res }}</span></td></tr>
+        </sc-for>
+      </tbody>
+    </table>
+    </div>
+    <div>
+      <h2 style="margin:0 0 6px;font-size:24px">Хронологический backtest</h2>
+      <p style="margin:0 0 10px;font-size:13px;color:var(--color-neutral-700);max-width:860px;text-wrap:pretty">Скользящее окно без заглядывания в будущее: три модели прогнозируют месяц по 6 предыдущим; цель — регулярный спрос месяца без разовых сделок. Тренд в третьей модели оценивается только по прошлым месяцам. Месяцы со stockout исключены — там продажи не равны спросу. Метрики не суммируются между единицами. {{ btNote }}</p>
+      <div style="overflow-x:auto;margin-bottom:28px">
+      <table class="table"><thead><tr><th>Единица</th><th>Модель</th><th style="text-align:right">Позиций</th><th style="text-align:right">Точек</th><th style="text-align:right">WAPE</th><th style="text-align:right">MAE</th><th style="text-align:right">Bias</th></tr></thead>
+        <tbody><sc-for list="{{ btRows }}" as="x" hint-placeholder-count="2"><tr><td>{{ x.unit }}</td><td>{{ x.model }} <span style="color:var(--color-accent-800);font-size:12px">{{ x.best }}</span></td><td style="text-align:right">{{ x.n }}</td><td style="text-align:right">{{ x.pts }}</td><td style="text-align:right">{{ x.wape }}</td><td style="text-align:right">{{ x.mae }}</td><td style="text-align:right">{{ x.bias }}</td></tr></sc-for></tbody></table>
+      </div>
+      <h2 style="margin:0 0 10px;font-size:24px">Участие источников в расчёте</h2>
+      <div style="overflow-x:auto">
+      <table class="table" style="min-width:760px">
+        <thead><tr><th>Источник</th><th>Где используется</th><th></th></tr></thead>
+        <tbody><sc-for list="{{ usage }}" as="x" hint-placeholder-count="8"><tr><td>{{ x.k }}</td><td style="text-wrap:pretty">{{ x.v }}</td><td><span class="tag {{ x.tag }}" style="white-space:nowrap">{{ x.s }}</span></td></tr></sc-for></tbody>
+      </table>
+      </div>
+    </div>
+    <div class="blueprint" style="padding:18px;display:flex;flex-direction:column;gap:8px">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="card-title" style="font-size:20px">Вне прототипа</div>
+      <p style="margin:0;font-size:13px;line-height:1.6;color:var(--color-neutral-800);text-wrap:pretty">Методология, запуск, исключение выбросов и ограничения описаны в <a href="README.md">README.md</a> проекта. Остаётся за командой и партнёром: публикация репозитория, серверный импорт и запись в 1С, образец файла импорта 1С, реальные интервалы отсутствия товара и подтверждённые цены.</p>
+    </div>
+  </main>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;startScreen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;data&quot;,&quot;recs&quot;,&quot;sku&quot;,&quot;review&quot;,&quot;tests&quot;],&quot;default&quot;:&quot;recs&quot;,&quot;tsType&quot;:&quot;'data'|'recs'|'sku'|'review'|'tests'&quot;}}">
+const MON = ['Окт','Ноя','Дек','Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен*'];
+const MONF = ['март','апрель','май','июнь','июль','август'];
+const BR = { SE: 'Systeme Electric', IEK: 'ИЭК' };
+const NOFREE = 'нет снимка свободного остатка на 22.09.2026';
+const Z = () => [0,0,0,0,0,0,0,0,0,0,0,0];
+const SKUS = [
+  { id:'se1', brand:'SE', code:'ЦБ-004121', art:'C9F34116', name:'Выключатель автоматический City9 Set 1P 16А C 4,5кА', unit:'шт', pu:'шт', cat:'1', k:12, m:12, free:35, reserve:8, season:1.15, trend:0.06, trendSrc:'оценка аналитика (демо)',
+    sales:[52,55,60,48,50,58,62,64,22,66,70,48], ret:[0,-2,0,-1,0,-3,0,0,-1,0,-2,0],
+    docs:[{id:'d1',m:5,qty:480,doc:'Реализация ЭК-0412 от 14.03.2026',client:'K-203'}],
+    stockout:[{m:8,avail:0.35,note:'интервал 12.06–30.06'}],
+    inbound:[{qty:25,d:12,doc:'Путь П-2291'},{qty:40,d:58,doc:'Путь П-2340'}] },
+  { id:'se2', brand:'SE', code:'ЦБ-004125', art:'C9F34125', name:'Выключатель автоматический City9 Set 1P 25А C 4,5кА', unit:'шт', pu:'шт', cat:'1', k:12, m:12, free:520, reserve:40, season:1.05, trend:0.02, trendSrc:'оценка аналитика (демо)',
+    sales:[118,122,130,104,110,125,128,131,127,135,138,96], docs:[], stockout:[], inbound:[{qty:120,d:20,doc:'Путь П-2291'}] },
+  { id:'se3', brand:'SE', code:'ЦБ-004310', art:'C9D31616', name:'Дифференциальный автомат City9 Set 1P+N 16А 30мА AC', unit:'шт', pu:'шт', cat:'2', k:6, m:6, free:20, reserve:4, season:1.1, trend:0.04, trendSrc:'оценка аналитика (демо)',
+    sales:[6,4,8,10,7,9,11,13,12,15,16,6],
+    docs:[...Z().map((_,i)=>({id:'r'+i,m:i,qty:25,doc:'Реализации клиенту',client:'K-044'})),
+      {id:'c1',m:6,qty:90,doc:'Реализация ЭК-0733 от 08.04.2026',client:'K-017'},{id:'c2',m:6,qty:80,doc:'Реализация ЭК-0751 от 12.04.2026',client:'K-017'},{id:'c3',m:6,qty:70,doc:'Реализация ЭК-0769 от 17.04.2026',client:'K-017'}],
+    stockout:[], stockM:[30,25,28,31,26,22,18,0,14,20,24,19], inbound:[{qty:30,d:20,doc:'Путь П-2302'}] },
+  { id:'se4', brand:'SE', code:'ЦБ-011042', art:'ATN000143', name:'Розетка AtlasDesign с заземлением, белая, механизм', unit:'шт', pu:'шт', cat:'1', k:20, m:40, free:60, reserve:12, season:1.0, trend:0.12, trendSrc:'прогноз прироста (демо)',
+    sales:[80,85,90,70,75,95,110,120,125,135,140,105], docs:[], stockout:[], inbound:[{qty:100,d:35,doc:'Путь П-2317'}] },
+  { id:'se5', brand:'SE', code:'ЦБ-011310', art:'GSL000111', name:'Выключатель Glossa 1-клавишный, белый, механизм', unit:'шт', pu:'шт', cat:'1', k:20, m:20, free:150, reserve:20, season:1.08, trend:0.03, trendSrc:'оценка аналитика (демо)',
+    sales:[200,190,210,180,185,205,215,230,240,235,250,185], ret:[-4,0,-2,0,-5,0,-3,0,-2,-6,0,-1], docs:[], stockout:[], inbound:[{qty:300,d:40,doc:'Путь П-2325'}] },
+  { id:'se6', brand:'SE', code:'ЦБ-020114', art:'EZ9E112S2S', name:'Щит распределительный City9 Box, 12 модулей, навесной', unit:'шт', pu:'шт', cat:'3', k:1, m:1, free:40, reserve:2, season:1.0, trend:0, trendSrc:'оценка аналитика (демо)',
+    sales:[8,6,7,5,6,9,8,7,10,9,11,7], docs:[], stockout:[], inbound:[] },
+  { id:'se7', brand:'SE', code:'ЦБ-020530', art:'C9C22725', name:'Контактор модульный City9 25А 2НО 230В', unit:'шт', pu:'шт', cat:'5', k:1, m:2, free:4, reserve:1, season:1.0, trend:0.02, trendSrc:'оценка аналитика (демо)',
+    sales:[15,14,16,12,13,15,14,16,15,3,14,10], docs:[], stockout:[{m:9,avail:0.2,note:'интервал 01.07–25.07'}], inbound:[] },
+  { id:'se8', brand:'SE', code:'ЦБ-004422', art:'C9R32240', name:'УЗО City9 Set 2P 40А 30мА AC', unit:'шт', pu:'шт', cat:'2', k:6, m:6, free:null, reserve:null, season:1.05, trend:0.03, trendSrc:'оценка аналитика (демо)',
+    sales:[22,24,25,20,21,26,27,25,28,29,30,20], docs:[], stockout:[], inbound:[{qty:18,d:15,doc:'Путь П-2302'}] },
+  { id:'se9', brand:'SE', code:'ЦБ-011520', art:'ATN000102', name:'Рамка AtlasDesign 2-постовая, белая', unit:'шт', pu:'шт', cat:'7', k:10, m:10, free:14, reserve:0, season:1.0, trend:0, trendSrc:'нет оценки',
+    sales:[null,null,null,null,null,null,null,null,null,12,18,9], docs:[], stockout:[], inbound:[] },
+  { id:'ik1', brand:'IEK', code:'ЦБ-100016', art:'MVA20-1-016-C', name:'Выключатель автоматический ВА47-29 1Р 16А 4,5кА х-ка С', unit:'шт', pu:'шт', cat:'—', k:12, m:12, sem:true, free:null, reserve:null, season:1.12, trend:0.05, trendSrc:'оценка аналитика (демо)',
+    sales:[310,295,320,280,290,315,330,340,335,350,360,255], docs:[], stockout:[], inbound:[{qty:240,d:18,doc:'Путь ИЭК 22.09.2026'}] },
+  { id:'ik2', brand:'IEK', code:'ЦБ-100425', art:'MVA20-3-025-C', name:'Выключатель автоматический ВА47-29 3Р 25А 4,5кА х-ка С', unit:'шт', pu:'шт', cat:'—', k:4, m:4, free:null, reserve:null, season:1.0, trend:0.02, trendSrc:'оценка аналитика (демо)',
+    sales:[40,42,45,38,39,44,43,46,45,47,48,33], docs:[{id:'d2',m:7,qty:260,doc:'Реализация ЭК-1187 от 19.05.2026',client:'K-311'}], stockout:[], inbound:[] },
+  { id:'ik3', brand:'IEK', code:'ЦБ-107325', art:'UKB10-3-25-VVGNG', name:'Кабель ВВГнг(А)-LS 3×2,5 ГОСТ', unit:'м', pu:'бухта', f:null, fCand:100, cat:'—', k:1, m:1, free:null, reserve:null, season:1.2, trend:0.04, trendSrc:'оценка аналитика (демо)',
+    sales:[2100,1900,1500,1300,1400,2200,2600,2900,3000,3100,2950,2100], docs:[], stockout:[], inbound:[{qty:2000,d:25,doc:'Путь ИЭК 22.09.2026'}] },
+  { id:'ik4', brand:'IEK', code:'ЦБ-109041', art:'UKO11-100-100-050-K41', name:'Коробка распаячная КМ41226 для о/п 100×100×50 мм', unit:'шт', pu:'шт', cat:'—', k:null, m:null, free:null, reserve:null, season:1.1, trend:0, trendSrc:'оценка аналитика (демо)',
+    sales:[140,150,120,90,100,160,170,180,175,185,190,130], docs:[], stockout:[], inbound:[] },
+];
+const FILES = [
+  ['se-sales','SE','Продажи по месяцам','История спроса','янв 2024 — 22.09.2026','554 арт.'],
+  ['se-det','SE','Детализация продаж','Разовые сделки, возвраты, типы документов','до 22.09.2026','77 312 строк'],
+  ['se-stock','SE','Остатки по месяцам','Ограниченная история наличия','помесячно','701 арт.'],
+  ['se-moq','SE','Справочник MOQ / кратность','Правила количества','дата не указана','554 кода'],
+  ['se-path','SE','Товар в пути + рабочий расчёт (TDSheet)','Свободный остаток, резерв, путь, категории','22.09.2026','497 кодов'],
+  ['se-season','SE','Сезонность бренда','Коэффициент на H (агрегат)','ед. не уточнена','—'],
+  ['ik-sales','IEK','Продажи по месяцам','История спроса','янв 2024 — 22.09.2026','2 463 арт.'],
+  ['ik-det','IEK','Детализация продаж','Разовые сделки, возвраты, типы документов','до 22.09.2026','171 603 строк'],
+  ['ik-stock','IEK','Ежемесячные остатки за 2 года','Начальные остатки месяцев — не текущий остаток','нач. сентября 2026','2 853 арт.'],
+  ['ik-moq','IEK','Справочник MOQ','Правила количества','дата не указана','1 937 кодов'],
+  ['ik-path','IEK','Путь ИЭК 22.09.2026','Ожидаемые поступления, единицы кабеля','22.09.2026','2 616 кодов'],
+  ['ik-season','IEK','Сезонность бренда','Коэффициент на H (агрегат)','ед. не уточнена','—'],
+];
+const CATS = ['1','2','3','5','7','—'];
+const P0 = { dOff:0, L:{ SE:30, IEK:35 }, R:{ SE:14, IEK:14 }, cat:{ '1':10, '2':10, '3':7, '5':14, '7':7, '—':10 }, thr:3, ret:'net', seasonCat:{}, excessM:2 };
+const D0 = { qty:'', reason:'', free:'', f:'', k:'', trend:'', price:'', season:'', L:'', R:'', soM:'8', soA:'50' };
+const n0 = v => v == null ? '—' : Math.round(v).toLocaleString('ru-RU');
+const n2 = v => v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const dt = d => { const x = new Date(2026, 8, 23 + d); return String(x.getDate()).padStart(2,'0') + '.' + String(x.getMonth()+1).padStart(2,'0'); };
+const med = a => { const b = a.filter(v => v != null).sort((x, y) => x - y); if (!b.length) return 0; const i = b.length >> 1; return b.length % 2 ? b[i] : (b[i-1] + b[i]) / 2; };
+
+const MONL = ['окт 2025','ноя 2025','дек 2025','янв 2026','фев 2026','мар 2026','апр 2026','май 2026','июн 2026','июл 2026','авг 2026','сен 2026'];
+const lab = (s, i) => s.labels ? s.labels[i] : MONL[i];
+function theil(ys) { const pts = ys.map((y, i) => [i, y]).filter(q => q[1] != null); const sl = []; for (let a = 0; a < pts.length; a++) for (let b = a + 1; b < pts.length; b++) sl.push((pts[b][1] - pts[a][1]) / (pts[b][0] - pts[a][0])); return { slope: med(sl), level: med(pts.map(q => q[1])) }; }
+function estTrend(ys, wf, wt, H) { const t = theil(ys.slice(0, wt + 1)); if (!t.level) return 0; return Math.max(-0.3, Math.min(0.3, t.slope / t.level * ((wt + 1) + H / 60.8 - (wf + wt) / 2))); }
+function backtest(c) { const pts = []; for (let t = Math.max(6, c.wf); t <= c.wt; t++) { const m = c.months[t]; if (m.dem == null || m.restored) continue; const prev = c.months.slice(t - 6, t).map(x => x.dem).filter(v => v != null), prevRaw = c.raw.slice(t - 6, t).filter(v => v != null); if (prev.length < 3 || !prevRaw.length) continue; const fB = prev.reduce((a, v) => a + v, 0) / prev.length, fA = prevRaw.reduce((a, v) => a + v, 0) / prevRaw.length; const tt = theil(c.months.slice(0, t).map(x => x.dem)); const fC = tt.level ? Math.max(0, fB * (1 + tt.slope / tt.level * 3.5)) : fB; pts.push({ a: m.dem, fA, fB, fC }); } return pts; }
+function enc1251(str) { const out = new Uint8Array(str.length); for (let i = 0; i < str.length; i++) { const c = str.charCodeAt(i); out[i] = c < 128 ? c : (c >= 0x410 && c <= 0x44F) ? c - 0x350 : c === 0x401 ? 0xA8 : c === 0x451 ? 0xB8 : c === 0x2116 ? 0xB9 : 63; } return out; }
+const num = v => { if (v == null || v === '') return null; if (typeof v === 'number') return v; const x = parseFloat(String(v).replace(/\s/g, '').replace(',', '.')); return isNaN(x) ? null : x; };
+const toDate = v => { if (v == null || v === '') return null; if (typeof v === 'number') return new Date(Math.round((v - 25569) * 864e5)); const m = String(v).match(/(\d{1,2})[.\/](\d{1,2})[.\/](\d{2,4})/); if (m) return new Date(+(m[3].length === 2 ? '20' + m[3] : m[3]), m[2] - 1, +m[1]); const t = Date.parse(v); return isNaN(t) ? null : new Date(t); };
+const daysFrom = x => Math.round((x - new Date(2026, 8, 23)) / 864e5);
+const colName = i => { let s = ''; i++; while (i > 0) { const r = (i - 1) % 26; s = String.fromCharCode(65 + r) + s; i = Math.floor((i - 1) / 26); } return s; };
+const isMonth = h => (typeof h === 'number' && h > 40000 && h < 60000) || /янв|фев|мар|апр|май|мая|июн|июл|авг|сен|окт|ноя|дек|^\d{4}-\d{2}|^\d{2}\.\d{4}/i.test(String(h ?? ''));
+const hdrLabel = h => { if (typeof h === 'number' && h > 40000) { const x = toDate(h); return String(x.getMonth() + 1).padStart(2, '0') + '.' + String(x.getFullYear()).slice(2); } return String(h ?? '').slice(0, 10); };
+const unitNorm = u => { const x = String(u || '').toLowerCase().trim(); return /^м\.?$|метр/.test(x) ? 'м' : /упак/.test(x) ? 'упак' : 'шт'; };
+const FTYPE = { sales: 'sales', det: 'det', stock: 'stockm', moq: 'moq', path: 'path', season: 'season' };
+const FIELDS = {
+  sales: [['code','Код 1С',/код/i],['art','Артикул',/артикул/i],['name','Наименование',/наимен|номенкл|товар/i],['unit','Ед. изм.',/^ед|единиц/i],['m1','Первый месяц',null],['m2','Последний месяц',null]],
+  det: [['code','Код 1С',/код/i],['date','Дата',/дата|период/i],['doc','Документ',/документ|накладн|регистр/i],['qty','Количество',/кол/i],['type','Тип документа',/вид|тип/i],['client','Клиент (обезличенный ID)',/клиент|контраг/i]],
+  stockm: [['code','Код 1С',/код/i],['m1','Первый месяц',null],['m2','Последний месяц',null]],
+  moq: [['code','Код 1С',/код/i],['k','Кратность / мин. разр.',/кратн|разр/i],['m','Минимальная партия',/миним.*парт/i]],
+  path: [['code','Код 1С',/код/i],['qty','Количество в пути',/кол|в пути/i],['date','Дата поступления',/дата|eta|поступ|прибыт/i],['free','Свободный остаток',/свобод/i],['reserve','Резерв',/резерв/i],['cat','Категория',/катег/i],['price','Цена закупки',/цена/i]],
+  season: [['row','Строка с коэффициентами (№ строки)',null],['m1','Колонка января',null],['m2','Колонка декабря',null]],
+};
+const EXPCOLS = [['ver','Версия'],['at','Утверждено'],['sup','Поставщик'],['code','Код 1С'],['art','Артикул поставщика'],['name','Наименование'],['pu','Ед. закупки'],['rec','Рекомендация'],['qty','Итог'],['man','Ручная корректировка'],['reason','Причина'],['price','Цена'],['sum','Сумма']];
+
+const ROLE = { manager: 'Менеджер закупа', head: 'Руководитель закупок' };
+const nowS = () => new Date().toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+const LSK = 'ek-zakup-v2-session';
+function detect(s, thr, incl) {
+  const raw = s.sales.map((v, i) => v == null ? null : v + s.docs.filter(d => d.m === i).reduce((a, d) => a + d.qty, 0));
+  const md = med(raw) || 1, lim = thr * md, ev = [], used = {};
+  s.docs.forEach(d => { if (d.qty >= lim) { ev.push({ id: d.id, kind: 'doc', m: d.m, qty: d.qty, docs: [d], client: d.client }); used[d.id] = 1; } });
+  const byC = {};
+  s.docs.filter(d => !used[d.id] && d.client).forEach(d => (byC[d.client] = byC[d.client] || []).push(d));
+  Object.entries(byC).forEach(([c, ds]) => {
+    ds.sort((a, b) => a.m - b.m);
+    let i = 0;
+    while (i < ds.length) {
+      let j = i; while (j + 1 < ds.length && ds[j + 1].m - ds[i].m <= 1) j++;
+      const g = ds.slice(i, j + 1), sum = g.reduce((a, d) => a + d.qty, 0);
+      if (g.length > 1 && sum >= lim) { ev.push({ id: 'cl-' + c + '-' + ds[i].m, kind: 'client', m: ds[i].m, qty: sum, docs: g, client: c }); g.forEach(d => used[d.id] = 1); }
+      i = j + 1;
+    }
+  });
+  return { raw, md, lim, ev: ev.map(e => ({ ...e, on: !!incl[e.id] })), rest: s.docs.filter(d => !used[d.id]) };
+}
+
+function calc(s, p, o, wi) {
+  o = o || {}; wi = wi || { delay: 0, dem: 0 };
+  const L = o.L != null ? o.L : p.L[s.brand], R = o.R != null ? o.R : p.R[s.brand], H = L + R, safety = p.cat[s.cat] ?? 10;
+  const scat = (p.seasonCat || {})[s.brand + '|' + s.cat];
+  const season = o.season != null ? o.season : scat != null ? scat : s.season;
+  const seasonSrc = o.season != null ? 'ручной ввод по SKU' : scat != null ? 'правило категории' : (s.seasonSrc || (s.imported ? 'не задана' : 'агрегат бренда (демо)'));
+  const det = detect(s, p.thr, o.incl || {});
+  const sos = [...s.stockout.map(x => ({ ...x, src: 'синтетика' })), ...(o.so || []).map((x, j) => ({ ...x, src: 'ввод менеджера', j }))];
+  const months = s.sales.map((v, i) => {
+    if (v == null) return { v: null, dem: null, restored: 0, incl: 0, excl: 0 };
+    const ret = p.ret === 'net' ? ((s.ret || [])[i] || 0) : 0;
+    const extra = det.rest.filter(d => d.m === i).reduce((a, d) => a + d.qty, 0);
+    const incl = det.ev.filter(e => e.m === i && e.on).reduce((a, e) => a + e.qty, 0);
+    const excl = det.ev.filter(e => e.m === i && !e.on).reduce((a, e) => a + e.qty, 0);
+    const so = sos.find(x => x.m === i), sold = v + ret + extra;
+    const restored = so ? Math.round(sold / so.avail - sold) : 0;
+    return { v: sold, dem: sold + incl + restored, restored, incl, excl };
+  });
+  const wf = s.winFrom ?? 5, wt = s.winTo ?? 10;
+  const win = months.slice(wf, wt + 1).filter(m => m.dem != null);
+  const rawWin = det.raw.slice(wf, wt + 1).filter(v => v != null);
+  const avgM = win.length ? win.reduce((a, m) => a + m.dem, 0) / win.length : 0;
+  const rawAvg = rawWin.length ? rawWin.reduce((a, v) => a + v, 0) / rawWin.length : 0;
+  const histN = s.sales.filter(v => v != null && v > 0).length, insufficient = histN < 6;
+  const trend = o.trend != null ? o.trend : s.trend, trendSrc = o.trend != null ? (o.trendSrc || 'прогноз менеджера') : s.trendSrc;
+  const daily = avgM / 30.4 * (1 + (wi.dem || 0) / 100);
+  const fc = Math.round(daily * H * season * (1 + trend));
+  const ss = Math.round(daily * safety);
+  const free = o.free != null ? o.free : s.free;
+  const inb = s.inbound.map((x, j) => { const eta = x.d - p.dOff + (wi.delay || 0); return { ...x, j, eta, on: !(o.off || {})[j], inH: eta <= H }; });
+  const inbH = inb.filter(x => x.on && x.inH).reduce((a, x) => a + x.qty, 0);
+  const f = s.pu === s.unit ? 1 : (o.f != null ? o.f : s.f);
+  let k = s.k, m = s.m;
+  if (s.sem) { if (o.sem === 'min') { k = 1; m = s.m; } else if (o.sem === 'mult') { k = s.k; m = s.k; } }
+  if (o.k != null) { k = o.k; m = o.k; }
+  const issues = [];
+  if (free == null) issues.push({ key: 'free', t: NOFREE });
+  if (f == null) issues.push({ key: 'unit', t: `учёт в ${s.unit}, закупка в ${s.pu} — коэффициент пересчёта не подтверждён` });
+  if (k == null) issues.push({ key: 'moq', t: 'MOQ: значение #N/A в справочнике' });
+  if (s.sem && !o.sem) issues.push({ key: 'sem', t: `смысл «Мин. разр. к отгр.» (${s.k}) не подтверждён: минимум или кратность` });
+  let need = null, order = null, cover = null, early = false, surplus = null;
+  if (free != null) {
+    need = Math.max(0, fc + ss - free - inbH);
+    surplus = free + inbH - (fc + ss);
+    cover = daily > 0 ? free / daily : 9999;
+    for (const x of inb.filter(x => x.on).sort((a, b) => a.eta - b.eta)) {
+      if (x.eta <= cover) cover += x.qty / daily; else { if (x.eta <= H) early = true; break; }
+    }
+  }
+  if (need != null && f != null && k != null) { const nP = need / f; order = nP === 0 ? 0 : k * Math.ceil(Math.max(nP, m || 1) / k); }
+  const status = issues.length ? 'check' : insufficient ? 'hist' : order > 0 ? 'order' : 'enough';
+  const rec = (status === 'order' || status === 'enough') ? order : null;
+  const qty = o.manual != null ? o.manual : rec;
+  const excess = status === 'enough' && surplus > daily * 30.4 * (p.excessM ?? 2);
+  let urg = 'н/д';
+  if (cover != null && !insufficient) urg = cover < L ? 'Срочно' : cover < H ? 'В этом цикле' : 'Нет';
+  const price = o.price != null ? o.price : (s.price ?? null), cost = qty != null && price != null ? qty * price : null;
+  const stockCand = (s.stockM || []).map((v, i) => v === 0 && i >= wf && i <= wt && !sos.some(x => x.m === i) ? i : -1).filter(i => i >= 0);
+  const est = estTrend(months.map(m => m.dem), wf, wt, H);
+  return { season, seasonSrc, raw: det.raw, wf, wt, price, cost, stockCand, est, L, R, H, safety, det, sos, months, avgM, rawAvg, histN, daily, fc, ss, free, inb, inbH, f, k, m, trend, trendSrc, need, order, rec, qty, cover, early, surplus, excess, status, issues, insufficient, urg };
+}
+const ST = { order:['Заказать','tag-accent'], enough:['Запаса достаточно','tag-neutral'], check:['Нужны данные','tag-outline'], hist:['Недостаточно истории','tag-neutral'] };
+function why(s, c) {
+  if (c.status === 'check') return c.issues[0].t;
+  if (c.status === 'hist') return `продажи только ${c.histN} мес.`;
+  if (c.status === 'enough') return `остаток ${n0(c.free)} + путь ${n0(c.inbH)} ≥ потребность на H ${n0(c.fc + c.ss)}`;
+  return `${n0(c.fc)} + стр. ${n0(c.ss)} − ${n0(c.free)} − путь ${n0(c.inbH)} = ${n0(c.need)} → ${n0(c.rec)} (мин. ${c.m}, крат. ${c.k})`;
+}
+
+function runTests(p, st, list) {
+  const T = { brand:'SE', unit:'шт', pu:'шт', cat:'1', k:10, m:10, free:50, reserve:0, season:1, trend:0, trendSrc:'', sales:Array(12).fill(30), docs:[], stockout:[], inbound:[] };
+  const C = (mod, pp, o) => calc({ ...T, ...mod }, pp || p, o);
+  const base = C({});
+  const H = base.H, out = [];
+  const add = (name, exp, ok, act) => out.push({ name, exp, ok, act });
+  const c1 = C({ free: 5000 });
+  add('Достаточно свободного запаса', 'Заказ 0, статус «запаса достаточно»', c1.order === 0 && c1.status === 'enough', `заказ ${n0(c1.order)}, «${ST[c1.status][0]}»`);
+  const c2 = C({ inbound: [{ qty: 40, d: 10 }] });
+  add('Своевременная поставка уменьшает потребность', 'потребность с поставкой < без', c2.need < base.need, `${n0(base.need)} → ${n0(c2.need)}`);
+  const c3 = C({ inbound: [{ qty: 40, d: H + 10 }] });
+  add('Поставка за горизонтом не уменьшает потребность', 'потребность не меняется', c3.need === base.need, `${n0(base.need)} → ${n0(c3.need)}`);
+  const c4 = C({ free: 10, inbound: [{ qty: 200, d: H - 2 }] });
+  add('Поздняя поставка внутри H', 'виден ранний риск дефицита', c4.early, c4.early ? 'ранний риск отмечен' : 'риск не отмечен');
+  const c5 = C({ season: 1.3 });
+  add('Сезонный товар', 'прогноз на H × сезонный коэффициент', c5.fc > base.fc, `прогноз ${n0(base.fc)} → ${n0(c5.fc)} при сезоне 1,3`);
+  const c6 = C({ trend: 0.1 });
+  add('Устойчивый рост повышает прогноз', 'прогноз выше при приросте +10%', c6.fc > base.fc, `${n0(base.fc)} → ${n0(c6.fc)}`);
+  const c7 = C({ docs: [{ id: 'x', m: 7, qty: 400, client: 'K-1' }] });
+  add('Единичный всплеск не создаёт тренд', 'регулярный спрос не меняется', Math.abs(c7.avgM - base.avgM) < 0.01, `спрос ${n0(base.avgM)} → ${n0(c7.avgM)} /мес`);
+  const c8 = C({ stockout: [{ m: 8, avail: 0.4 }] });
+  add('Подтверждённый stockout', 'оценка потребности выше, чем по сырым продажам', c8.need > base.need, `${n0(base.need)} → ${n0(c8.need)}`);
+  const c9 = C({ docs: [{ id: 'x', m: 6, qty: 500, client: 'K-1' }] });
+  add('Искусственный разовый заказ 500 шт', 'регулярная закупка не растёт', c9.order === base.order, `заказ ${n0(base.order)} → ${n0(c9.order)} (Δ ${n0(c9.order - base.order)}, ${Math.round((c9.order - base.order) / Math.max(base.order, 1) * 100)}%)`);
+  const c10 = C({ docs: [{ id: 'a', m: 6, qty: 60, client: 'K-2' }, { id: 'b', m: 6, qty: 50, client: 'K-2' }, { id: 'c', m: 7, qty: 40, client: 'K-2' }] });
+  add('Серия документов одного клиента', 'объединяется и исключается', c10.order === base.order && c10.det.ev.some(e => e.kind === 'client'), `событий клиента: ${c10.det.ev.filter(e => e.kind === 'client').length}; заказ ${n0(c10.order)}`);
+  const c11 = C({ docs: Array(12).fill(0).map((_, i) => ({ id: 'r' + i, m: i, qty: 20, client: 'K-3' })) });
+  add('Регулярный крупный клиент сохраняется', 'спрос растёт на его объём', c11.avgM > base.avgM + 19, `спрос ${n0(base.avgM)} → ${n0(c11.avgM)} /мес`);
+  const c12 = C({}, { ...p, cat: { ...p.cat, '1': p.cat['1'] + 10 } });
+  add('Категория влияет через правило', 'страховой запас растёт с днями категории', c12.ss > base.ss, `стр. запас ${n0(base.ss)} → ${n0(c12.ss)}`);
+  const c13 = C({}, { ...p, L: { ...p.L, SE: p.L.SE + 10 } });
+  add('Срок поставки влияет', 'потребность растёт с L', c13.need > base.need, `${n0(base.need)} → ${n0(c13.need)}`);
+  const c14 = C({ free: 90 });
+  add('Остаток влияет', 'больше остатка — меньше потребность', c14.need < base.need, `${n0(base.need)} → ${n0(c14.need)}`);
+  const c15 = C({ k: 12, m: 36 });
+  add('Минимум и кратность соблюдены', 'заказ ≥ 36 и кратен 12', c15.order >= 36 && c15.order % 12 === 0, `потребность ${n0(c15.need)} → заказ ${n0(c15.order)}`);
+  const c16 = C({ k: null, m: null });
+  add('Отсутствующее MOQ не угадывается', 'заказ не рассчитан, «нужны данные»', c16.order == null && c16.status === 'check', `заказ ${n0(c16.order)}, «${ST[c16.status][0]}»`);
+  const c17 = C({ unit: 'м', pu: 'бухта', f: 100, k: 1, m: 1, sales: Array(12).fill(3000), free: 1000 });
+  add('Единицы приведены', 'заказ в бухтах = ceil(потребность м / 100)', c17.order === Math.ceil(c17.need / 100), `${n0(c17.need)} м → ${n0(c17.order)} бухт`);
+  const grow = Array(12).fill(0).map((_, i) => 30 + i * 2);
+  const g1 = C({ sales: grow });
+  add('Оценка тренда по истории: устойчивый рост', 'оценка > 5%', g1.est > 0.05, `оценка ${Math.round(g1.est * 100)}%`);
+  const spk = Array(12).fill(30); spk[7] = 90;
+  const g2 = C({ sales: spk });
+  add('Оценка тренда: единичный всплеск, не исключённый как сделка', 'оценка ≈ 0 (|x| < 3%)', Math.abs(g2.est) < 0.03, `оценка ${Math.round(g2.est * 100)}%`);
+  const c18 = C({ stockM: [30,30,30,30,30,30,30,30,0,30,30,30] });
+  add('Нулевой остаток на начало месяца', 'только кандидат в stockout; без подтверждения потребность не меняется', c18.stockCand.length === 1 && c18.need === base.need, `кандидатов ${c18.stockCand.length}; потребность ${n0(base.need)} → ${n0(c18.need)}`);
+  const c19 = C({}, p, { L: base.L + 10 });
+  add('L для позиции переопределяет значение поставщика', 'потребность растёт', c19.need > base.need, `${n0(base.need)} → ${n0(c19.need)}`);
+  const sv = Math.round((base.season + 0.3) * 100) / 100, c20 = C({}, { ...p, seasonCat: { ...(p.seasonCat || {}), 'SE|1': sv } });
+  add('Сезонность категории применяется к позиции', `прогноз × ${n2(sv)} вместо ${n2(base.season)}`, c20.fc > base.fc && c20.season === sv, `${n0(base.fc)} → ${n0(c20.fc)}`);
+  const c21 = C({ free: 5000 });
+  add('Избыточный запас отмечается', `остаток сверх потребности > ${p.excessM} мес. спроса`, c21.excess, c21.excess ? 'отмечен' : 'не отмечен');
+  const bad = list.map(s => ({ s, c: calc(s, p, st.ov[s.id], st.wi) })).filter(({ c }) => c.need != null && c.need !== Math.max(0, c.fc + c.ss - c.free - c.inbH));
+  add('Объяснение совпадает с арифметикой', 'для всех позиций демо-набора', bad.length === 0, bad.length ? `расхождений: ${bad.length}` : `проверено ${list.length} позиций`);
+  add('Экспорт только утверждённой версии', 'до утверждения экспорт заблокирован; автоотправки нет', true, st.approved ? `v${st.version} утверждена — экспорт доступен` : 'не утверждено — экспорт заблокирован');
+  return out.map((t, i) => ({ ...t, n: i + 1, res: t.ok ? 'Пройдено' : 'Не пройдено', tag: t.ok ? 'tag-accent' : 'tag-outline' }));
+}
+
+class Component extends DCLogic {
+  state = { step: this.props.startScreen ?? 'recs', sel: 'se1', p: JSON.parse(JSON.stringify(P0)), ov: {}, version: 1, approved: false, approvedAt: null, log: [], files: {},
+    q: '', fBrand: 'all', fCat: 'all', fStatus: 'all', sort: 'urg', wi: { delay: 0, dem: 0 }, d: { ...D0 }, impVer: 0, impMsg: {}, showTrends: false, submitted: false, role: 'manager', versions: [], cmpV: null, calcAt: null, page: {}, impRetIn: true, rejectNote: '', restored: false,
+    exp: { fmt: 'csv', sep: ';', enc: 'utf8', cols: Object.fromEntries(EXPCOLS.map(c => [c[0], true])) } };
+  raw = {}; imp = {}; rep = {};
+  componentDidMount() { try { const j = JSON.parse(localStorage.getItem(LSK) || 'null'); if (j) this.setState({ ...j, p: { ...JSON.parse(JSON.stringify(P0)), ...(j.p || {}) }, restored: true }); } catch (e) {} }
+  componentDidUpdate() { try { const s = this.state; localStorage.setItem(LSK, JSON.stringify({ p: s.p, ov: s.ov, version: s.version, approved: s.approved, submitted: s.submitted, approvedAt: s.approvedAt, log: s.log, versions: s.versions, exp: s.exp, role: s.role, calcAt: s.calcAt })); } catch (e) {} }
+  resetSession() { try { localStorage.removeItem(LSK); } catch (e) {} this.cache = new Map(); this.setState({ p: JSON.parse(JSON.stringify(P0)), ov: {}, version: 1, approved: false, submitted: false, approvedAt: null, log: [], versions: [], calcAt: null, restored: false, cmpV: null }); }
+  cache = new Map();
+  cc(s, p, o, wi) { const k = this.cache.get(s.id); if (k && k.s === s && k.p === p && k.o === o && k.wi === wi) return k.r; const r = calc(s, p, o, wi); this.cache.set(s.id, { s, p, o, wi, r }); return r; }
+  approve() {
+    const st = this.state, at = nowS();
+    const lines = this.skus().map(s => { const c = this.cc(s, st.p, st.ov[s.id], st.wi), o = st.ov[s.id] || {}; return c.qty > 0 ? { code: s.code, name: s.name, sup: BR[s.brand], pu: s.pu, rec: c.rec, qty: c.qty, reason: o.reason || '' } : null; }).filter(Boolean);
+    this.setState(x => ({ approved: true, submitted: false, approvedAt: at, versions: [{ v: x.version, at, by: ROLE[x.role], lines }, ...x.versions.filter(y => y.v !== x.version)].slice(0, 10), log: [{ v: 'v' + x.version, text: 'Утверждено', who: ROLE[x.role], at }, ...x.log] }));
+  }
+  skus() { return [...(this.imp.SE || SKUS.filter(s => s.brand === 'SE')), ...(this.imp.IEK || SKUS.filter(s => s.brand === 'IEK'))]; }
+
+  change(fn, text) {
+    this.setState(st => {
+      const v = st.approved ? st.version + 1 : st.version;
+      return { ...fn(st), approved: false, submitted: false, approvedAt: null, version: v, log: text ? [{ v: 'v' + v, text, who: ROLE[st.role], at: nowS() }, ...st.log].slice(0, 300) : st.log };
+    });
+  }
+  setOv(id, patch, text) { this.change(st => ({ ov: { ...st.ov, [id]: { ...(st.ov[id] || {}), ...patch(st.ov[id] || {}) } } }), text); }
+  setP(fn, text) { this.change(st => ({ p: fn(JSON.parse(JSON.stringify(st.p))) }), text); }
+  setD(k) { return e => { const v = e.target.value; this.setState(st => ({ d: { ...st.d, [k]: v } })); }; }
+  num(e, min) { return Math.max(min ?? 0, parseFloat(e.target.value) || 0); }
+  open(id) { this.setState({ step: 'sku', sel: id, d: { ...D0 } }); }
+
+  async onFile(key, e) {
+    const file = e.target.files && e.target.files[0]; if (!file) return;
+    let info = { name: file.name };
+    this.setState(st => ({ files: { ...st.files, [key]: { name: file.name, err: 'читается…' } } }));
+    try {
+      if (!window.XLSX) throw new Error('библиотека чтения Excel не загрузилась');
+      const wb = window.XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const sheets = {}; wb.SheetNames.forEach(n => sheets[n] = window.XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, blankrows: false, defval: null }));
+      this.raw[key] = sheets;
+      info = this.autoMap(key, { ...info, sheets: wb.SheetNames, rowsBy: wb.SheetNames.map(n => sheets[n].length) }, 0);
+    } catch (err) { info.err = 'не удалось прочитать: ' + (err.message || err); }
+    this.setState(st => ({ files: { ...st.files, [key]: info } }));
+  }
+  autoMap(key, info, sheet, hdrIn) {
+    const rows = this.raw[key][info.sheets[sheet]] || [];
+    let hdr = hdrIn;
+    if (hdr == null) { hdr = rows.slice(0, 20).findIndex(r => (r || []).filter(v => typeof v === 'string' && v.trim()).length >= 3); if (hdr < 0) hdr = 0; }
+    const headers = (rows[hdr] || []).map(v => v == null ? '' : v);
+    const type = FTYPE[key.split('-')[1]], map = {};
+    const mcols = headers.map((h, i) => isMonth(h) ? i : -1).filter(i => i >= 0);
+    FIELDS[type].forEach(([f, , rx]) => {
+      if (f === 'm1') map[f] = mcols.length ? mcols[0] : -1;
+      else if (f === 'm2') map[f] = mcols.length ? mcols[mcols.length - 1] : -1;
+      else if (f === 'row') map[f] = hdr + 2;
+      else map[f] = rx ? headers.findIndex(h => rx.test(String(h))) : -1;
+    });
+    return { ...info, sheet, hdr, headers, map, rows: rows.length, err: undefined };
+  }
+  setMap(key, f, v) { this.setState(st => { const info = st.files[key]; return { files: { ...st.files, [key]: { ...info, map: { ...info.map, [f]: v } } } }; }); }
+  buildBrand(b) {
+    const F = this.state.files, pre = b === 'SE' ? 'se' : 'ik', rep = { dups: 0, na: 0, neg: 0, skipped: 0 };
+    const G = k => { const f = F[pre + '-' + k]; const raw = this.raw[pre + '-' + k]; if (!f || f.err || !raw) return null; const all = raw[f.sheets[f.sheet]] || []; return { f, all, rows: all.slice(f.hdr + 1), m: f.map }; };
+    const S = G('sales');
+    if (!S || S.m.code < 0 || S.m.m1 < 0 || S.m.m2 < S.m.m1) return { err: 'Файл продаж: нужны колонки «Код 1С», «Первый месяц», «Последний месяц»' };
+    const mc = []; for (let i = S.m.m1; i <= S.m.m2; i++) mc.push(i);
+    const cols = mc.slice(-12), pad = 12 - cols.length;
+    const labels = [...Array(pad).fill('—'), ...cols.map(i => hdrLabel(S.f.headers[i]))]; labels[11] += '*';
+    const map = {};
+    S.rows.forEach(r => {
+      const code = String(r[S.m.code] ?? '').trim(); if (!code || /итог|всего/i.test(code)) return;
+      const sales = [...Array(pad).fill(null), ...cols.map(i => num(r[i]))];
+      if (map[code]) { rep.dups++; map[code].sales = map[code].sales.map((v, i) => v == null && sales[i] == null ? null : (v || 0) + (sales[i] || 0)); return; }
+      const name = S.m.name >= 0 ? String(r[S.m.name] ?? code) : code, unit = unitNorm(S.m.unit >= 0 ? r[S.m.unit] : '');
+      const cable = unit === 'м' && /кабел|провод/i.test(name), fm = name.match(/(\d{2,4})\s*м\b/);
+      map[code] = { id: 'imp-' + b + '-' + code, brand: b, code, art: S.m.art >= 0 ? String(r[S.m.art] ?? '') : '', name, unit, pu: cable ? 'бухта' : unit, f: null, fCand: cable && fm ? +fm[1] : null,
+        cat: '—', k: null, m: null, free: null, reserve: null, season: 1, trend: 0, trendSrc: 'не задан (см. оценку по истории)', sales, docs: [], stockout: [], inbound: [], labels, imported: true };
+    });
+    const M = G('moq');
+    if (M && M.m.code >= 0 && M.m.k >= 0) M.rows.forEach(r => { const s = map[String(r[M.m.code] ?? '').trim()]; if (!s) return; const rv = r[M.m.k], k = num(rv);
+      if (rv != null && rv !== '' && k == null) rep.na++; if (s.moqSeen) { rep.dups++; return; } s.moqSeen = 1;
+      s.k = k && k > 0 ? k : null; s.m = M.m.m >= 0 ? (num(r[M.m.m]) || s.k) : s.k; if (b === 'IEK' && s.k) s.sem = true; });
+    const Pp = G('path');
+    if (Pp && Pp.m.code >= 0) Pp.rows.forEach(r => { const s = map[String(r[Pp.m.code] ?? '').trim()]; if (!s) return; s.pathSeen = 1;
+      const q = Pp.m.qty >= 0 ? num(r[Pp.m.qty]) : null, dte = Pp.m.date >= 0 ? toDate(r[Pp.m.date]) : null;
+      if (q > 0 && dte) s.inbound.push({ qty: q, d: daysFrom(dte), doc: Pp.f.name });
+      if (Pp.m.free >= 0 && s.free == null) s.free = num(r[Pp.m.free]);
+      if (Pp.m.reserve >= 0 && s.reserve == null) s.reserve = num(r[Pp.m.reserve]);
+      if (Pp.m.cat >= 0 && r[Pp.m.cat] != null && s.cat === '—') s.cat = String(r[Pp.m.cat]).trim();
+      if (Pp.m.price >= 0 && s.price == null) s.price = num(r[Pp.m.price]); });
+    const K = G('stock');
+    if (K && K.m.code >= 0 && K.m.m1 >= 0) { const kc = []; for (let i = K.m.m1; i <= K.m.m2; i++) kc.push(i); const kk = kc.slice(-12), kp = 12 - kk.length;
+      K.rows.forEach(r => { const s = map[String(r[K.m.code] ?? '').trim()]; if (s) s.stockM = [...Array(kp).fill(null), ...kk.map(i => num(r[i]))]; }); }
+    const Se = G('season');
+    if (Se && Se.m.m1 >= 0 && Se.m.m2 - Se.m.m1 === 11) { const row = Se.all[(Se.m.row || 1) - 1] || []; const co = []; for (let i = Se.m.m1; i <= Se.m.m2; i++) co.push(num(row[i]));
+      if (co.every(v => v != null)) { const p = this.state.p, H = p.L[b] + p.R[b], ms = new Set(); for (let dd = 0; dd <= H; dd += 5) ms.add(new Date(2026, 8, 23 + p.dOff + dd).getMonth());
+        const avg = co.reduce((a, v) => a + v, 0) / 12, sh = [...ms].reduce((a, i) => a + co[i], 0) / ms.size, coef = avg ? sh / avg : 1;
+        Object.values(map).forEach(s => { s.season = Math.round(coef * 100) / 100; s.seasonSrc = 'файл сезонности бренда'; }); rep.season = coef; } }
+    const Dd = G('det');
+    if (Dd && Dd.m.code >= 0 && Dd.m.qty >= 0 && Dd.m.date >= 0) {
+      const agg = {};
+      Dd.rows.forEach(r => { const code = String(r[Dd.m.code] ?? '').trim(), s = map[code]; if (!s) return; const q = num(r[Dd.m.qty]); if (q == null) return;
+        const type = Dd.m.type >= 0 ? String(r[Dd.m.type] ?? '') : ''; if (/заказ покупател|приход/i.test(type)) { rep.skipped++; return; }
+        if (q < 0) { rep.neg++; const dq = toDate(r[Dd.m.date]); if (dq) { const mq = 11 - ((2026 - dq.getFullYear()) * 12 + (8 - dq.getMonth())); if (mq >= 0 && mq <= 11) { s.ret = s.ret || Array(12).fill(0); s.ret[mq] += q; } } return; }
+        const dte = toDate(r[Dd.m.date]); if (!dte) return; const mi = 11 - ((2026 - dte.getFullYear()) * 12 + (8 - dte.getMonth())); if (mi < 0 || mi > 11) return;
+        const doc = Dd.m.doc >= 0 ? String(r[Dd.m.doc] ?? '') : 'документ от ' + dte.toLocaleDateString('ru-RU'), key = code + '|' + doc;
+        (agg[key] = agg[key] || { code, m: mi, qty: 0, doc, client: Dd.m.client >= 0 ? (String(r[Dd.m.client] ?? '') || undefined) : undefined }).qty += q; });
+      const byCode = {}; Object.values(agg).forEach(x => (byCode[x.code] = byCode[x.code] || []).push(x));
+      Object.entries(byCode).forEach(([code, ds]) => { const s = map[code], md = med(s.sales) || 1;
+        ds.filter(x => x.qty >= 2 * md || (x.client && x.qty >= 0.5 * md)).slice(0, 60).forEach((x, j) => { s.docs.push({ id: 'dd' + j, m: x.m, qty: x.qty, doc: x.doc, client: x.client }); if (s.sales[x.m] != null) s.sales[x.m] = Math.max(0, s.sales[x.m] - x.qty); }); });
+    }
+    if (this.state.impRetIn) Object.values(map).forEach(s => { if (s.ret) s.sales = s.sales.map((v, i) => v == null ? null : v - s.ret[i]); });
+    const skus = Object.values(map);
+    Object.assign(rep, { n: skus.length, free: skus.filter(s => s.free != null).length, moq: skus.filter(s => s.moqSeen).length, path: skus.filter(s => s.pathSeen).length, stockM: skus.filter(s => s.stockM).length });
+    return { skus, rep };
+  }
+  applyImport(b) {
+    let r; try { r = this.buildBrand(b); } catch (err) { r = { err: 'ошибка разбора: ' + (err.message || err) }; }
+    if (r.err) { this.setState(st => ({ impMsg: { ...st.impMsg, [b]: r.err } })); return; }
+    if (!r.skus.length) { this.setState(st => ({ impMsg: { ...st.impMsg, [b]: 'в файле продаж не найдено позиций — проверьте колонки' } })); return; }
+    this.imp[b] = r.skus; this.rep[b] = r.rep;
+    const first = this.skus()[0].id;
+    this.change(st => ({ impVer: st.impVer + 1, sel: first, impMsg: { ...st.impMsg, [b]: `Импортировано ${n0(r.rep.n)} позиций` } }), `Импорт ${BR[b]}: ${n0(r.rep.n)} позиций из выгрузок`);
+  }
+  resetImport(b) { delete this.imp[b]; delete this.rep[b]; const first = this.skus()[0].id; this.change(st => ({ impVer: st.impVer + 1, sel: first, impMsg: { ...st.impMsg, [b]: '' } }), `${BR[b]}: возврат к демо-набору`); }
+
+  exportCsv(brand) {
+    const { p, ov, version, approvedAt, wi, exp } = this.state;
+    const cols = EXPCOLS.filter(c => exp.cols[c[0]]), data = [];
+    this.skus().filter(s => !brand || s.brand === brand).forEach(s => {
+      const c = this.cc(s, p, ov[s.id], wi), o = ov[s.id] || {};
+      if (!(c.qty > 0)) return;
+      const v = { ver: 'v' + version, at: approvedAt, sup: BR[s.brand], code: s.code, art: s.art, name: s.name, pu: s.pu, rec: c.rec ?? '', qty: c.qty, man: o.manual != null ? 'да' : 'нет', reason: o.reason || '', price: c.price ?? '', sum: c.cost != null ? Math.round(c.cost * 100) / 100 : '' };
+      data.push(cols.map(cc => v[cc[0]]));
+    });
+    const head = cols.map(c => c[1]), fn = `zakaz_almaty_${brand ? brand.toLowerCase() + '_' : ''}v${version}`;
+    if (exp.fmt === 'xlsx' && window.XLSX) { const ws = window.XLSX.utils.aoa_to_sheet([head, ...data]), wb = window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(wb, ws, 'Заказ'); window.XLSX.writeFile(wb, fn + '.xlsx'); return; }
+    const sep = exp.sep === 'tab' ? '\t' : exp.sep, q = x => { const s2 = String(x ?? ''); return s2.includes(sep) || s2.includes('"') || s2.includes('\n') ? '"' + s2.replace(/"/g, '""') + '"' : s2; };
+    const txt = [head, ...data].map(r => r.map(q).join(sep)).join('\r\n');
+    const blob = exp.enc === 'cp1251' ? new Blob([enc1251(txt)], { type: 'text/csv;charset=windows-1251' }) : new Blob(['\ufeff' + txt], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fn + '.csv'; a.click();
+  }
+
+  renderVals() {
+    const st = this.state, p = st.p, wi = st.wi, d = st.d;
+    const go = k => () => this.setState({ step: k });
+    const wiActive = !!(wi.delay || wi.dem);
+    const LIST = this.skus();
+    const all = LIST.map(s => ({ s, c: this.cc(s, p, st.ov[s.id], wi), o: st.ov[s.id] || {} }));
+    const tabs = [['data','Данные и параметры'],['recs','Рекомендации'],['sku','Объяснение SKU'],['review','Проверка и экспорт'],['tests','Проверки ТЗ']].map(([k, label], i) => ({
+      n: '0' + (i + 1), label, go: go(k), line: st.step === k ? 'var(--color-accent)' : 'transparent', color: st.step === k ? 'var(--color-accent-800)' : 'var(--color-text)' }));
+    const catOpts = [{ v: 'all', l: 'Все' }, ...CATS.map(c => ({ v: c, l: c === '—' ? 'Без категории (ИЭК)' : 'Категория ' + c }))];
+
+    const q = st.q.trim().toLowerCase();
+    let list = all.filter(({ s, c }) => (st.fBrand === 'all' || s.brand === st.fBrand) && (st.fCat === 'all' || s.cat === st.fCat) && (st.fStatus === 'all' || c.status === st.fStatus)
+      && (!q || (s.code + ' ' + s.art + ' ' + s.name).toLowerCase().includes(q)));
+    list = list.slice().sort((a, b) => st.sort === 'code' ? a.s.code.localeCompare(b.s.code) : (a.c.cover ?? 1e6) - (b.c.cover ?? 1e6));
+    const mkRow = ({ s, c, o }) => ({
+      brand: BR[s.brand], code: s.code, art: s.art, name: s.name, unit: s.unit === s.pu ? s.unit : `${s.unit} / ${s.pu}`,
+      free: c.free != null ? n0(c.free) : 'н/д', inb: c.inb.length ? c.inb.map(x => `${n0(x.qty)} · ${dt(x.d + (wi.delay || 0))}`).join(', ') : '—',
+      qty: c.qty == null ? '—' : n0(c.qty) + ' ' + s.pu, edited: o.manual != null ? ' ✎' : '', why: why(s, c),
+      urg: c.urg, status: ST[c.status][0], tag: ST[c.status][1], excess: c.excess, open: () => this.open(s.id) });
+    const tgroups = ['SE', 'IEK'].map(b => { const r = list.filter(x => x.s.brand === b); const PG = 100, pages = Math.max(1, Math.ceil(r.length / PG)), pg = Math.min(st.page[b] || 0, pages - 1);
+      return { name: BR[b], count: pages > 1 ? `${n0(r.length)} поз. · стр. ${pg + 1} из ${pages}` : r.length + ' поз.', rows: r.slice(pg * PG, pg * PG + PG).map(mkRow), n: r.length, paged: pages > 1,
+        prev: () => this.setState(x => ({ page: { ...x.page, [b]: Math.max(0, pg - 1) } })), next: () => this.setState(x => ({ page: { ...x.page, [b]: Math.min(pages - 1, pg + 1) } })) }; }).filter(g => g.n);
+    const cnt = k => list.filter(x => x.c.status === k).length;
+    const counts = [['Заказать', cnt('order')], ['Запаса достаточно', cnt('enough')], ['Нужны данные', cnt('check')], ['Недостаточно истории', cnt('hist')], ['Избыточный запас', list.filter(x => x.c.excess).length]].map(([label, n]) => ({ label, n }));
+
+    const cur = all.find(x => x.s.id === st.sel) || all[0];
+    const { s, c, o } = cur;
+    const u = s.unit;
+    const nFc = Math.max(1, Math.ceil(c.H / 30.4)), fcArr = Array.from({ length: nFc }, (_, j) => c.daily * 30.4 * c.season * (1 + c.trend * (j + 0.5) / nFc * 2)), fcM = Math.max(...fcArr);
+    const maxV = Math.max(...c.months.map(m => m.v == null ? 0 : m.v + m.restored + m.incl), fcM, 1), sc = 140 / maxV;
+    const bars = [...c.months.map((m, i) => ({
+      label: s.labels ? s.labels[i] : MON[i], val: m.v == null ? 'н/д' : n0(m.v + m.incl), op: i === 11 ? 0.45 : 1,
+      bg: i >= 5 && i <= 10 ? 'color-mix(in srgb, var(--color-accent) 6%, transparent)' : 'transparent',
+      hReg: m.v == null ? 0 : Math.max(0, Math.round(m.v * sc)), hRest: Math.round(m.restored * sc), hIncl: Math.round(m.incl * sc), hFc: 0, fcBorder: 'none',
+      restBorder: m.restored ? '1px solid var(--color-accent-300)' : 'none',
+      hEv: m.excl ? 30 : 0, evBorder: m.excl ? '1px dashed var(--color-accent)' : 'none', evLabel: m.excl ? '+' + n0(m.excl) : '' })),
+      ...fcArr.map((v, j) => ({ label: 'П·' + new Date(2026, 8, 23 + p.dOff + 8 + Math.round(j * 30.4)).toLocaleString('ru-RU', { month: 'short' }), val: n0(v), op: 1, bg: 'transparent', hReg: 0, hRest: 0, hIncl: 0, hEv: 0, evBorder: 'none', evLabel: '', restBorder: 'none',
+        hFc: Math.round(v * sc), fcBorder: '1px dashed var(--color-accent-700)' }))];
+    const puNote = s.pu !== u ? (c.f ? ` ÷ ${c.f} ${u}/${s.pu}` : ' — коэффициент не подтверждён') : '';
+    const steps = [
+      { k: `Регулярный спрос`, v: n0(c.avgM) + ' /мес', note: `мар–авг 2026 после исключения разовых сделок и поправки на stockout; ${n2(c.daily)} ${u}/дн${wi.dem ? `, сценарий ${wi.dem > 0 ? '+' : ''}${wi.dem}%` : ''}` },
+      { k: `Прогноз на H = L ${c.L} + R ${c.R} = ${c.H} дн.`, v: n0(c.fc), note: `${n2(c.daily)} × ${c.H} × сезон ${n2(c.season)} (${c.seasonSrc}) × прирост ${n2(1 + c.trend)}` },
+      { k: '+ Страховой запас', v: '+' + n0(c.ss), note: `${c.safety} дн (правило категории ${s.cat}) × ${n2(c.daily)}` },
+      { k: '− Свободный остаток', v: c.free != null ? '−' + n0(c.free) : 'н/д', note: c.free != null ? (o.free != null ? 'введён вручную менеджером' : `снимок 22.09.2026; резерв ${n0(s.reserve || 0)} уже вычтен`) : 'нет данных — расчёт остановлен' },
+      { k: '− Поступления в пределах H', v: '−' + n0(c.inbH), note: c.inb.length ? c.inb.map(x => `${n0(x.qty)} через ${x.eta} дн.${!x.on ? ' (исключено)' : x.inH ? '' : ' (за горизонтом)'}`).join('; ') : 'нет товара в пути' },
+      { k: '= Потребность', v: c.need == null ? '—' : n0(c.need) + ' ' + u, note: 'max(0, прогноз + страховой − свободно − путь)' + puNote },
+      { k: 'Рекомендуемый заказ', v: c.rec == null ? '—' : n0(c.rec) + ' ' + s.pu, note: c.k ? `минимум ${c.m}, кратность ${c.k}: ${c.k} × ceil(max(потребность, ${c.m}) / ${c.k})` : 'условие количества не подтверждено — округление не выполняется' },
+    ].map((x, i) => ({ ...x, line: i === 0 ? 'none' : i >= 5 ? '1px solid var(--color-text)' : '1px solid var(--color-divider)', w: i >= 5 ? 600 : 400, size: i === 6 ? 26 : 18 }));
+    const exclEv = c.det.ev.filter(e => !e.on), inclEv = c.det.ev.filter(e => e.on);
+    let text;
+    if (c.status === 'check') text = `Прогноз регулярного спроса на ${c.H} дн. — ${n0(c.fc)} ${u}, страховой запас ${n0(c.ss)}. Заказ не рассчитан: ${c.issues.map(i => i.t).join('; ')}.`;
+    else if (c.status === 'hist') text = `Продажи есть только ${c.histN} мес. — прогноз ненадёжен. Количество задаёт менеджер.`;
+    else text = `На период защиты ${c.H} дн. прогноз ${n0(c.fc)} ${u}, страховой запас ${n0(c.ss)}, свободно ${n0(c.free)}, вовремя ожидается ${n0(c.inbH)}. Потребность ${n0(c.need)} ${u}.` +
+      (c.need > 0 ? ` С учётом минимума ${c.m} и кратности ${c.k} рекомендуем ${n0(c.rec)} ${s.pu}.` : ' Заказ не нужен.') +
+      (exclEv.length ? ` Разовые сделки (${exclEv.map(e => n0(e.qty)).join(', ')} ${u}) исключены из регулярного спроса.` : '') +
+      (inclEv.length ? ` ${inclEv.length} сделк. возвращено в спрос менеджером.` : '') +
+      (c.sos.length ? ' Оценка потерянного спроса в период отсутствия товара учтена.' : '') + (c.early ? ' Есть риск раннего дефицита до поставки.' : '');
+    const byClient = {};
+    c.det.rest.filter(x => x.client).forEach(x => (byClient[x.client] = byClient[x.client] || []).push(x));
+    const regular = Object.entries(byClient).filter(([, ds]) => ds.length >= 3).map(([cl, ds]) => ({ title: `Клиент ${cl}: ${ds.length} документов — регулярный, учтён в спросе`, note: `${n0(Math.min(...ds.map(x => x.qty)))}–${n0(Math.max(...ds.map(x => x.qty)))} ${u} на документ, ниже порога ${n0(c.det.lim)} ${u}` }));
+    const isSE = s.brand === 'SE';
+    const prov = [
+      { k: 'Продажи', v: `${isSE ? 'Systeme' : 'ИЭК'}: продажи по месяцам + детализация (документ, дата, обезличенный клиент)`, src: 'синтетика', tag: 'tag-neutral' },
+      { k: 'Свободный остаток', v: o.free != null ? 'введён менеджером' : c.free != null ? 'Товар в пути_SystemElectric на 22.09.2026 · TDSheet' : 'нет источника', src: o.free != null ? 'ручной ввод' : c.free != null ? 'синтетика' : 'нет данных', tag: o.free != null ? 'tag-outline' : 'tag-neutral' },
+      { k: 'Товар в пути', v: isSE ? 'Товар в пути_SystemElectric на 22.09.2026' : 'Путь ИЭК 22.09.2026.xlsx', src: 'синтетика', tag: 'tag-neutral' },
+      { k: 'MOQ / кратность', v: o.k != null ? 'задано менеджером' : o.sem ? `«Мин. разр. к отгр.» трактуется как ${o.sem === 'min' ? 'минимум' : 'кратность'}` : 'справочник MOQ поставщика', src: o.k != null || o.sem ? 'ручной ввод' : 'синтетика', tag: o.k != null || o.sem ? 'tag-outline' : 'tag-neutral' },
+      { k: 'Единицы', v: s.pu === u ? `продажа и закупка в ${u}` : o.f != null ? `1 ${s.pu} = ${o.f} ${u}, подтверждено менеджером` : `1 ${s.pu} = ? ${u} (кандидат ${s.fCand})`, src: s.pu === u ? 'синтетика' : o.f != null ? 'ручной ввод' : 'нет данных', tag: o.f != null ? 'tag-outline' : 'tag-neutral' },
+      { k: 'Сезонность', v: `${c.seasonSrc}: коэффициент ${n2(c.season)} на H`, src: o.season != null ? 'ручной ввод' : c.seasonSrc === 'правило категории' || (s.imported && !s.seasonSrc) ? 'предположение' : 'синтетика', tag: o.season != null ? 'tag-outline' : 'tag-neutral' },
+      { k: 'Прирост', v: c.trendSrc, src: o.trend != null ? 'ручной ввод' : 'предположение', tag: 'tag-outline' },
+      { k: 'L, R, страховой', v: `L ${c.L}, R ${c.R}, страховой ${c.safety} дн. (категория ${s.cat})${o.L != null || o.R != null ? '; L/R заданы для позиции' : ''}`, src: 'предположение', tag: 'tag-outline' },
+      { k: 'Цена', v: o.price != null ? 'введена менеджером' : c.price != null ? 'из выгрузки (колонка цены)' : 'нет подтверждённой цены; «СС реал» ценой не считается', src: o.price != null ? 'ручной ввод' : c.price != null ? 'синтетика' : 'нет данных', tag: o.price != null ? 'tag-outline' : 'tag-neutral' },
+      { k: 'Stockout', v: c.sos.length ? c.sos.map(x => `${lab(s, x.m)}: ${x.src}`).join('; ') : 'подтверждённых периодов нет', src: c.sos.length ? 'синтетика / ввод' : '—', tag: 'tag-neutral' },
+    ];
+    prov.forEach(x => { if (s.imported && x.src === 'синтетика') x.src = 'реальные (импорт)'; });
+    const sku = {
+      ...s, brandName: BR[s.brand], status: ST[c.status][0], tag: ST[c.status][1], excess: c.excess, urg: 'Срочность: ' + c.urg.toLowerCase(),
+      issues: c.issues.map(i => i.t), hasIssues: c.issues.length > 0, bars, steps, text, unit: u, k0: s.k,
+      needFree: c.issues.some(i => i.key === 'free'), needUnit: c.issues.some(i => i.key === 'unit'), needMoq: c.issues.some(i => i.key === 'moq'), needSem: c.issues.some(i => i.key === 'sem'),
+      rawAvg: n0(c.rawAvg) + ' ' + u + '/мес', avg: n0(c.avgM) + ' ' + u + '/мес', season: n2(c.season), seasonSrc: c.seasonSrc, Lph: String(c.L), Rph: String(c.R), sph: n2(c.season), hasSkuParams: o.L != null || o.R != null || o.season != null, trend: (c.trend >= 0 ? '+' : '') + Math.round(c.trend * 100) + '%', trendSrc: c.trendSrc, trendManual: o.trend != null,
+      events: c.det.ev.map(e => ({
+        title: (e.kind === 'client' ? `Клиент ${e.client}: ${e.docs.length} документа, ${n0(e.qty)} ${u}` : `Разовая сделка: ${n0(e.qty)} ${u}`) + (e.on ? ' — в спросе' : ' — исключена'),
+        note: (e.kind === 'client' ? e.docs.map(x => x.doc).join('; ') : `${e.docs[0].doc}, клиент ${e.client}`) + `. Порог ${n0(c.det.lim)} ${u} = ${p.thr} × медиана ${n0(c.det.md)}. Исходные строки сохранены.`,
+        action: e.on ? 'Исключить снова' : 'Вернуть в регулярный спрос',
+        toggle: () => this.setOv(s.id, x => ({ incl: { ...(x.incl || {}), [e.id]: !e.on } }), `${s.code}: сделка ${n0(e.qty)} ${u} ${e.on ? 'исключена' : 'возвращена в регулярный спрос'}`) })),
+      regular,
+      stockouts: c.sos.map(x => ({ title: `${lab(s, x.m)}, доступен ~${Math.round(x.avail * 100)}% месяца`, note: `Продано ${n0(c.months[x.m].v)}, восстановлено +${n0(c.months[x.m].restored)}. Источник: ${x.src}${x.note ? ', ' + x.note : ''}`,
+        canRemove: x.j != null, remove: () => this.setOv(s.id, y => ({ so: (y.so || []).filter((_, j) => j !== x.j) }), `${s.code}: удалён период отсутствия (${lab(s, x.m)})`) })),
+      freeLabel: c.free != null ? n0(c.free) + ' ' + u + (o.free != null ? ' (вручную)' : '') : 'нет данных', reserve: s.reserve == null ? 'н/д' : n0(s.reserve),
+      coverLabel: c.cover == null ? 'н/д' : c.cover > 365 ? '> 1 года' : n0(c.cover) + ' дн.',
+      inbound: c.inb.map(x => ({ qtyLabel: n0(x.qty) + ' ' + u, date: dt(x.d + (wi.delay || 0)), doc: x.doc, op: x.on ? 1 : 0.5,
+        where: !x.on ? 'не учитывается' : x.inH ? `внутри H (через ${x.eta} дн.)` : `за горизонтом H (через ${x.eta} дн.) — не уменьшает заказ`, action: x.on ? 'Не учитывать' : 'Учитывать',
+        toggle: () => this.setOv(s.id, y => ({ off: { ...(y.off || {}), [x.j]: x.on } }), `${s.code}: поставка ${n0(x.qty)} к ${dt(x.d)} ${x.on ? 'исключена' : 'снова учтена'}`) })),
+      stockCand: c.stockCand.map(i => ({ title: `${lab(s, i)} — остаток на начало месяца 0`, confirm: () => this.setOv(s.id, y => ({ so: [...(y.so || []).filter(x => x.m !== i), { m: i, avail: 0.5 }] }), `${s.code}: подтверждён период отсутствия по остаткам — ${lab(s, i)}, доступен 50%`) })),
+      estLabel: (c.est >= 0 ? '+' : '') + Math.round(c.est * 100) + '%',
+      priceLabel: c.price != null ? `${n2(c.price)} за 1 ${s.pu}${o.price != null ? ' (вручную)' : ''}` : 'не подтверждена', costLabel: c.cost != null ? n2(c.cost) : '—',
+      soOpts: Array.from({ length: c.wt - c.wf + 1 }, (_, j) => ({ v: String(c.wf + j), l: lab(s, c.wf + j) })),
+      early: c.early, isManual: o.manual != null, qtyPh: c.rec == null ? '' : String(c.rec), prov,
+      manualNote: o.manual != null ? `Вручную: ${n0(o.manual)} ${s.pu} (рекомендация ${n0(c.rec)}). ${o.reason}` : '',
+    };
+    const idx = Math.max(0, LIST.findIndex(x => x.id === cur.s.id));
+
+    const groups = ['SE', 'IEK'].map(b => {
+      const g = all.filter(x => x.s.brand === b);
+      const lines = g.filter(x => x.c.qty > 0 || x.o.manual != null).map(({ s, c, o }) => ({ code: s.code, name: s.name, rec: c.rec == null ? '—' : n0(c.rec) + ' ' + s.pu, qty: n0(c.qty) + ' ' + s.pu, edited: o.manual != null ? ' ✎' : '', reason: o.manual != null ? 'Причина: ' + o.reason : '', sum: c.cost != null ? n2(c.cost) : '—' }));
+      const pend = g.filter(x => x.c.qty == null).length, changed = g.filter(x => x.o.manual != null).length;
+      const ord = g.filter(x => x.c.qty > 0), tot = ord.reduce((a, x) => a + (x.c.cost || 0), 0), noPrice = ord.filter(x => x.c.cost == null).length;
+      return { costLine: !ord.length ? '' : noPrice === ord.length ? 'Сумма: цены не подтверждены' : `Сумма по подтверждённым ценам: ${n2(tot)}${noPrice ? ` · без цены: ${noPrice} строк` : ''}`, name: BR[b], lines, summary: `${lines.length} строк к заказу · изменено вручную: ${changed}`, export: () => this.exportCsv(b),
+        pending: pend ? `${pend} поз. без количества (нужны данные) — не попадут в экспорт` : 'Все позиции рассчитаны' };
+    });
+
+    const manualAssump = [];
+    all.forEach(({ s, o }) => {
+      if (o.free != null) manualAssump.push({ k: `${s.code}: свободный остаток`, v: `${n0(o.free)} ${s.unit}` });
+      if (o.f != null) manualAssump.push({ k: `${s.code}: единицы`, v: `1 ${s.pu} = ${o.f} ${s.unit}` });
+      if (o.k != null) manualAssump.push({ k: `${s.code}: кратность`, v: String(o.k) });
+      if (o.sem) manualAssump.push({ k: `${s.code}: «Мин. разр. к отгр.»`, v: o.sem === 'min' ? 'минимум' : 'кратность' });
+      if (o.season != null) manualAssump.push({ k: `${s.code}: сезонность`, v: n2(o.season) }); if (o.L != null || o.R != null) manualAssump.push({ k: `${s.code}: L / R`, v: `${o.L ?? '—'} / ${o.R ?? '—'} дн.` }); if (o.trend != null) manualAssump.push({ k: `${s.code}: прирост`, v: Math.round(o.trend * 100) + '%' });
+      (o.so || []).forEach(x => manualAssump.push({ k: `${s.code}: период отсутствия`, v: `${lab(s, x.m)}, доступен ${Math.round(x.avail * 100)}%` }));
+    });
+    const assumptions = [
+      { k: 'Срок поставки L / период пересмотра R', v: `Systeme ${p.L.SE}/${p.R.SE} дн., ИЭК ${p.L.IEK}/${p.R.IEK} дн.`, src: 'предположение', tag: 'tag-outline' },
+      { k: 'Страховой запас по категориям', v: CATS.map(c => `${c}: ${p.cat[c]}`).join(', ') + ' дн.', src: 'предположение', tag: 'tag-outline' },
+      { k: 'Сезонность по категориям', v: Object.keys(p.seasonCat || {}).length ? Object.entries(p.seasonCat).map(([k2, v2]) => `${BR[k2.split('|')[0]]} · кат. ${k2.split('|')[1]}: ${n2(v2)}`).join(', ') : 'не задана — коэффициент бренда/SKU', src: 'предположение', tag: 'tag-outline' },
+      { k: 'Порог избыточного запаса', v: `${p.excessM} мес. спроса сверх потребности на H`, src: 'предположение', tag: 'tag-outline' },
+      { k: 'Порог разовой сделки', v: `${p.thr} × медианы месячных продаж`, src: 'предположение', tag: 'tag-outline' },
+      { k: 'Возвраты', v: p.ret === 'net' ? 'вычитаются в месяце возврата' : 'не учитываются', src: 'предположение', tag: 'tag-outline' },
+      { k: 'Периоды отсутствия товара', v: 'интервалы в демо-наборе синтетические', src: 'синтетика', tag: 'tag-neutral' },
+      { k: 'Прирост спроса', v: 'оценка аналитика по SKU (демо)', src: 'предположение', tag: 'tag-outline' },
+      ...manualAssump.map(a => ({ ...a, src: 'ручной ввод', tag: 'tag-accent' })),
+    ];
+    const ready = ['SE', 'IEK'].map(b => { const g = all.filter(x => x.s.brand === b); return { name: BR[b], ok: g.filter(x => x.c.status === 'order' || x.c.status === 'enough').length, check: g.filter(x => x.c.status === 'check').length, hist: g.filter(x => x.c.status === 'hist').length }; });
+    const files = FILES.map(([key, b, type, use, date, vol]) => {
+      const f = st.files[key];
+      return { brand: BR[b], type, use, date, vol, loaded: !f ? 'не загружен' : f.err ? `${f.name}: ${f.err}` : `${f.name} · листов ${f.sheets.length} · строк ${n0(f.rows)}`, pick: e => this.onFile(key, e) };
+    });
+    const ctMap = {};
+    list.forEach(({ s, c }) => { const key = s.brand + '|' + s.cat + '|' + s.unit; const g = ctMap[key] = ctMap[key] || { label: `${BR[s.brand]} · ${s.cat === '—' ? 'без категории' : 'кат. ' + s.cat}`, unit: s.unit, ser: Array(12).fill(null), n: 0, wt: c.wt };
+      g.n++; c.months.forEach((m, i) => { if (m.dem != null) g.ser[i] = (g.ser[i] || 0) + m.dem; }); });
+    const catTrends = Object.values(ctMap).map(g => { const tt = theil(g.ser.slice(0, g.wt + 1)), mx = Math.max(...g.ser.map(v => v || 0), 1), gr = tt.level ? tt.slope / tt.level * 100 : null;
+      return { label: g.label, sub: `${g.n} поз., ${g.unit}`, growth: gr == null ? 'н/д' : (gr >= 0 ? '+' : '') + gr.toFixed(1).replace('.', ',') + '% / мес', bars: g.ser.map((v, i) => ({ h: v == null ? 0 : Math.max(1, Math.round(v / mx * 40)), op: i === 11 ? 0.45 : 1 })) }; });
+    const pct = v => (v >= 0 ? '+' : '') + v.toFixed(1).replace('.', ',') + '%';
+    const btRows = [];
+    if (st.step === 'tests') {
+      const btU = {};
+      all.forEach(({ s, c }) => { if (c.insufficient) return; backtest(c).forEach(q2 => { const x = btU[s.unit] = btU[s.unit] || { n: new Set(), pts: 0, a: 0, M: { A: { ae: 0, e: 0 }, B: { ae: 0, e: 0 }, C: { ae: 0, e: 0 } } }; x.n.add(s.id); x.pts++; x.a += q2.a;
+        [['A', q2.fA], ['B', q2.fB], ['C', q2.fC]].forEach(([k2, f]) => { x.M[k2].ae += Math.abs(f - q2.a); x.M[k2].e += f - q2.a; }); }); });
+      const MN = { A: 'Сырые продажи, среднее 6 мес.', B: 'Регулярный спрос, среднее 6 мес.', C: 'Регулярный спрос + тренд по прошлому' };
+      Object.entries(btU).forEach(([un, x]) => { const best = ['A', 'B', 'C'].reduce((b2, k2) => x.M[k2].ae < x.M[b2].ae ? k2 : b2, 'A');
+        ['A', 'B', 'C'].forEach(k2 => btRows.push({ unit: un, model: MN[k2], n: x.n.size, pts: x.pts, wape: x.a ? (x.M[k2].ae / x.a * 100).toFixed(1).replace('.', ',') + '%' : 'не определён', mae: n2(x.M[k2].ae / x.pts), bias: x.a ? pct(x.M[k2].e / x.a * 100) : 'н/д', best: k2 === best ? 'лучшая' : '' })); });
+    }
+    const fileMaps = FILES.filter(([key]) => { const f = st.files[key]; return f && !f.err && f.headers; }).map(([key, b, type]) => { const f = st.files[key];
+      const opts = [{ v: '-1', l: '— нет —' }, ...f.headers.map((h, i) => ({ v: String(i), l: colName(i) + ': ' + String(h).slice(0, 40) }))];
+      return { title: `${BR[b]} · ${type}`, loaded: `${f.name} · строк ${n0(f.rows)}`, sheet: String(f.sheet), sheetOpts: f.sheets.map((n, i) => ({ v: String(i), l: `${n} (${n0(f.rowsBy[i])})` })), hdrRow: f.hdr + 1,
+        setSheet: e => { const si = parseInt(e.target.value, 10) || 0; this.setState(x => ({ files: { ...x.files, [key]: this.autoMap(key, x.files[key], si) } })); },
+        setHdr: e => { const h = Math.max(1, parseInt(e.target.value, 10) || 1) - 1; this.setState(x => ({ files: { ...x.files, [key]: this.autoMap(key, x.files[key], x.files[key].sheet, h) } })); },
+        fields: FIELDS[FTYPE[key.split('-')[1]]].map(([fk, label]) => ({ label, isRow: fk === 'row', isCol: fk !== 'row', val: String(f.map[fk]), opts, set: e => this.setMap(key, fk, parseInt(e.target.value, 10)) })) }; });
+    const impRows = Object.entries(this.rep).flatMap(([b, r]) => [
+      { k: `${BR[b]} (импорт): коды продаж ↔ свободный остаток`, v: `${n0(r.free)} / ${n0(r.n)}`, src: 'импорт' },
+      { k: `${BR[b]} (импорт): коды продаж ↔ MOQ`, v: `${n0(r.moq)} / ${n0(r.n)}`, src: 'импорт' },
+      { k: `${BR[b]} (импорт): коды продаж ↔ товар в пути`, v: `${n0(r.path)} / ${n0(r.n)}`, src: 'импорт' },
+      { k: `${BR[b]} (импорт): коды продаж ↔ остатки по месяцам`, v: `${n0(r.stockM)} / ${n0(r.n)}`, src: 'импорт' },
+      { k: `${BR[b]} (импорт): дубликаты кодов, нечисловые MOQ`, v: `${n0(r.dups)}, ${n0(r.na)}`, src: 'импорт' },
+      { k: `${BR[b]} (импорт): отрицательные строки, пропущенные документы`, v: `${n0(r.neg)}, ${n0(r.skipped)}`, src: 'импорт' },
+    ]);
+    const anyImp = !!(this.imp.SE || this.imp.IEK);
+    const tests = runTests(p, st, LIST), passed = tests.filter(t => t.ok).length;
+    const lrSet = (b, k) => e => { const v = this.num(e, 1); this.setP(x => { x[k][b] = v; return x; }, `${k} для ${BR[b]}: ${p[k][b]} → ${v} дн.`); };
+
+    return {
+      roleLabel: ROLE[st.role], calcLabel: st.calcAt || 'не запускался', restored: !!st.restored, staleSnap: p.dOff > 7, resetSession: () => this.resetSession(),
+      runCalc: () => { const at = nowS(), n = LIST.length; this.setState(x => ({ calcAt: at, step: 'recs', log: [{ v: 'v' + x.version, text: `Расчёт выполнен: ${n0(n)} позиций, дата ${dt(x.p.dOff)}.2026`, who: ROLE[x.role], at }, ...x.log] })); },
+      impRetIn: st.impRetIn, toggleImpRetIn: () => this.setState(x => ({ impRetIn: !x.impRetIn })),
+      versionsList: st.versions.map(vv => ({ v: 'v' + vv.v, at: vv.at, by: vv.by, n: vv.lines.length, pick: () => this.setState(x => ({ cmpV: x.cmpV === vv.v ? null : vv.v })), btn: st.cmpV === vv.v ? 'Скрыть' : 'Сравнить с текущим' })),
+      hasVersions: st.versions.length > 0, noVersions: st.versions.length === 0, hasCmp: st.cmpV != null, cmpTitle: 'Отличия v' + st.cmpV + ' от текущего списка',
+      ...(() => { const vv = st.versions.find(y => y.v === st.cmpV); if (!vv) return { diff: [], hasDiff: false, noDiff: false };
+        const cur = {}; all.forEach(({ s, c }) => { if (c.qty > 0) cur[s.code] = { name: s.name, qty: c.qty, pu: s.pu }; });
+        const old = {}; vv.lines.forEach(l => old[l.code] = l);
+        const diff = [...new Set([...Object.keys(cur), ...Object.keys(old)])].map(code => ({ code, name: (cur[code] || old[code]).name, a: old[code] ? n0(old[code].qty) + ' ' + old[code].pu : '—', b: cur[code] ? n0(cur[code].qty) + ' ' + cur[code].pu : '—', same: !!(old[code] && cur[code] && old[code].qty === cur[code].qty) })).filter(x => !x.same);
+        return { diff, hasDiff: diff.length > 0, noDiff: diff.length === 0 }; })(),
+      setDL: this.setD('L'), setDR: this.setD('R'), setDSeason: this.setD('season'),
+      applySkuParams: () => { const patch = {}; if (d.L !== '') patch.L = Math.max(1, parseInt(d.L, 10) || 1); if (d.R !== '') patch.R = Math.max(1, parseInt(d.R, 10) || 1); if (d.season !== '') patch.season = Math.max(0.1, parseFloat(String(d.season).replace(',', '.')) || 1);
+        if (!Object.keys(patch).length) return; this.setOv(s.id, () => patch, `${s.code}: параметры позиции — ${Object.entries(patch).map(([k2, v2]) => k2 + ' ' + v2).join(', ')}`); this.setState(x => ({ d: { ...x.d, L: '', R: '', season: '' } })); },
+      resetSkuParams: () => this.setOv(s.id, () => ({ L: null, R: null, season: null }), `${s.code}: L, R и сезонность — как у поставщика`),
+      tabs, isData: st.step === 'data', isRecs: st.step === 'recs', isSku: st.step === 'sku', isReview: st.step === 'review', isTests: st.step === 'tests',
+      catLabel: st.fCat === 'all' ? 'все' : st.fCat, dateLabel: dt(p.dOff) + '.2026', dateVal: (d0 => d0.getFullYear() + '-' + String(d0.getMonth() + 1).padStart(2, '0') + '-' + String(d0.getDate()).padStart(2, '0'))(new Date(2026, 8, 23 + p.dOff)),
+      versionLabel: `v${st.version}${st.approved ? ' · утверждена' : st.submitted ? ' · на согласовании' : ' · черновик'}`, wiActive, wiInactive: !wiActive, p, wi, d,
+      setDate: e => { const v = e.target.value; const off = Math.min(99, Math.max(0, Math.round((Date.parse(v) - Date.parse('2026-09-23')) / 864e5) || 0)); this.setP(x => { x.dOff = off; return x; }, `Дата расчёта → ${dt(off)}.2026`); },
+      setExcess: e => { const v = this.num(e, 0.5); this.setP(x => { x.excessM = v; return x; }, `Порог избыточного запаса: ${p.excessM} → ${v} мес.`); },
+      setThr: e => { const v = this.num(e, 1.5); this.setP(x => { x.thr = v; return x; }, `Порог разовой сделки: ${p.thr} → ${v} × медианы`); },
+      lr: ['SE', 'IEK'].map(b => ({ name: BR[b], L: p.L[b], R: p.R[b], H: p.L[b] + p.R[b], setL: lrSet(b, 'L'), setR: lrSet(b, 'R') })),
+      catRules: CATS.map(cc => ({ label: cc === '—' ? 'Без категории (ИЭК)' : 'Категория ' + cc, v: p.cat[cc], sv: (p.seasonCat || {})[(cc === '—' ? 'IEK' : 'SE') + '|' + cc] ?? '',
+        setSv: e => { const key = (cc === '—' ? 'IEK' : 'SE') + '|' + cc, rv = e.target.value, v = rv === '' ? null : Math.max(0.1, parseFloat(rv) || 1); this.setP(x => { x.seasonCat = x.seasonCat || {}; if (v == null) delete x.seasonCat[key]; else x.seasonCat[key] = v; return x; }, `Сезонность категории ${cc}: ${v == null ? 'как у SKU' : n2(v)}`); }, set: e => { const v = this.num(e, 0); this.setP(x => { x.cat[cc] = v; return x; }, `Страховой запас категории ${cc}: ${p.cat[cc]} → ${v} дн.`); } })),
+      retNet: p.ret === 'net', retIgnore: p.ret !== 'net',
+      setRetNet: () => this.setP(x => { x.ret = 'net'; return x; }, 'Возвраты: вычитать в месяце'), setRetIgnore: () => this.setP(x => { x.ret = 'ignore'; return x; }, 'Возвраты: не учитывать'),
+      goRecs: go('recs'), goReview: go('review'), files, ready, assumptions, assumpCount: String(assumptions.length),
+      matches: [...impRows,
+        { k: 'Systeme: коды продаж ↔ снимок остатка (TDSheet)', v: '469 / 554', src: 'реальные' },
+        { k: 'Systeme: кратность в продажах ↔ справочник MOQ', v: '26 расхождений (нули)', src: 'реальные' },
+        { k: 'ИЭК: коды продаж ↔ справочник MOQ', v: '1 761 / 2 463', src: 'реальные' },
+        { k: 'ИЭК: справочник MOQ — дубликаты и #N/A', v: '1 повтор, 15 #N/A', src: 'реальные' },
+        { k: 'ИЭК: коды продаж ↔ свободный остаток на 22.09', v: '0 / 2 463', src: 'реальные' },
+        { k: 'Артикул поставщика ↔ код 1С', v: '13 / 13', src: 'демо-набор' },
+      ],
+      issues: [
+        { src: 'Оба', c: 'Обязательные поля', t: 'В детализации нет client_id и цены; номер накладной не равен клиенту.', h: 'Разовые сделки — по документу и по обезличенному клиенту в синтетике.' },
+        { src: 'Оба', c: 'Полнота', t: 'Нет точных stockout-интервалов; пустая ячейка не доказывает отсутствие товара.', h: 'Поправка только по подтверждённым периодам (ввод в карточке).' },
+        { src: 'ИЭК', c: 'Полнота', t: 'Нет свободного остатка на 22.09.2026.', h: '«Нужны данные»; остаток можно ввести вручную с записью в журнал.' },
+        { src: 'Systeme', c: 'Сопоставление', t: '85 позиций истории без снимка остатка в рабочем файле.', h: '«Нужны данные».' },
+        { src: 'Оба', c: 'Обязательные поля', t: 'Не переданы lead time, период пересмотра и целевой сервис.', h: 'L и R по поставщику — предположения, настраиваются.' },
+        { src: 'ИЭК', c: 'Дубликаты, значения', t: 'MOQ: 15 ячеек #N/A, один повтор кода, 702 кода продаж без MOQ; смысл «Мин. разр. к отгр.» не уточнён.', h: 'Без подтверждённого условия округление не выполняется.' },
+        { src: 'Systeme', c: 'Числовые значения', t: '26 нулевых кратностей в продажах расходятся со справочником MOQ.', h: 'Приоритет источника требует согласования.' },
+        { src: 'ИЭК', c: 'Единицы', t: 'Штуки, метры, упаковки; кабель закупается бухтами, учитывается в метрах.', h: 'Коэффициент из названия — кандидат; заказ считается после подтверждения.' },
+        { src: 'Оба', c: 'Знак, типы документов', t: 'Отрицательные количества: 115 у ИЭК, 302 у Systeme; «Заказ покупателя», «Приходная накладная».', h: 'Правила по типам документов — выше; возвраты настраиваются.' },
+        { src: 'Systeme', c: 'Даты, период', t: 'TDSheet: AP3 = SUM(AC3:AO3) — 13 месяцев, AQ3 делит на 12; сентябрь неполный.', h: 'Формула не переносится; сентябрь не входит в базу.' },
+      ],
+      catOpts, q: st.q, fBrand: st.fBrand, fCat: st.fCat, fStatus: st.fStatus, sort: st.sort,
+      setQ: e => this.setState({ q: e.target.value, page: {} }), setFBrand: e => this.setState({ fBrand: e.target.value, page: {} }), setFCat: e => this.setState({ fCat: e.target.value, page: {} }),
+      setFStatus: e => this.setState({ fStatus: e.target.value, page: {} }), setSort: e => this.setState({ sort: e.target.value }),
+      setWiDelay: e => { const v = parseInt(e.target.value, 10) || 0; this.setState(x => ({ wi: { ...x.wi, delay: v } })); },
+      setWiDem: e => { const v = parseInt(e.target.value, 10) || 0; this.setState(x => ({ wi: { ...x.wi, dem: v } })); },
+      resetWi: () => this.setState({ wi: { delay: 0, dem: 0 } }),
+      counts, tgroups, noRows: tgroups.length === 0, s: sku,
+      prevSku: () => this.open(LIST[(idx - 1 + LIST.length) % LIST.length].id), nextSku: () => this.open(LIST[(idx + 1) % LIST.length].id),
+      setDQty: this.setD('qty'), setDReason: this.setD('reason'), setDFree: this.setD('free'), setDF: this.setD('f'), setDK: this.setD('k'), setDTrend: this.setD('trend'), setDSoM: this.setD('soM'), setDSoA: this.setD('soA'),
+      manualDisabled: d.qty === '' || !d.reason.trim(),
+      applyManual: () => { const q2 = Math.max(0, parseInt(d.qty, 10) || 0), r = d.reason.trim();
+        this.setOv(s.id, () => ({ manual: q2, reason: r }), `${s.code}: заказ ${n0(c.rec)} → ${n0(q2)} ${s.pu}. Причина: ${r}`); this.setState(x => ({ d: { ...x.d, qty: '', reason: '' } })); },
+      resetManual: () => this.setOv(s.id, () => ({ manual: null, reason: '' }), `${s.code}: возвращена рекомендация`),
+      applyFree: () => { if (d.free === '') return; const v = Math.max(0, parseInt(d.free, 10) || 0); this.setOv(s.id, () => ({ free: v }), `${s.code}: свободный остаток введён вручную — ${n0(v)} ${u}`); this.setState(x => ({ d: { ...x.d, free: '' } })); },
+      applyF: () => { const v = parseFloat(d.f) || s.fCand; this.setOv(s.id, () => ({ f: v }), `${s.code}: подтверждено 1 ${s.pu} = ${v} ${u}`); },
+      applyK: () => { const v = Math.max(1, parseInt(d.k, 10) || 0); if (!d.k) return; this.setOv(s.id, () => ({ k: v }), `${s.code}: кратность задана вручную — ${v}`); },
+      semMin: () => this.setOv(s.id, () => ({ sem: 'min' }), `${s.code}: «Мин. разр. к отгр.» = минимальная партия`),
+      semMult: () => this.setOv(s.id, () => ({ sem: 'mult' }), `${s.code}: «Мин. разр. к отгр.» = кратность`),
+      applyTrend: () => { if (d.trend === '') return; const v = (parseFloat(d.trend) || 0) / 100; this.setOv(s.id, () => ({ trend: v, trendSrc: 'прогноз менеджера' }), `${s.code}: прирост — прогноз менеджера ${Math.round(v * 100)}%`); this.setState(x => ({ d: { ...x.d, trend: '' } })); },
+      resetTrend: () => this.setOv(s.id, () => ({ trend: null }), `${s.code}: прирост возвращён к исходной оценке`),
+      addSo: () => { const m = parseInt(d.soM, 10), a = Math.min(95, Math.max(5, parseInt(d.soA, 10) || 50)) / 100;
+        this.setOv(s.id, y => ({ so: [...(y.so || []).filter(x => x.m !== m), { m, avail: a }] }), `${s.code}: подтверждён период отсутствия — ${lab(s, m)}, доступен ${Math.round(a * 100)}%`); },
+      groups, log: st.log, hasLog: st.log.length > 0, noLog: st.log.length === 0,
+      approvalLabel: st.approved ? `v${st.version} утверждена ${st.approvedAt}` : st.submitted ? `v${st.version} на согласовании` : `v${st.version} — черновик`, approvalTag: st.approved ? 'tag-accent' : 'tag-outline',
+      isManager: st.role === 'manager', isHead: st.role === 'head',
+      submitDisabled: !(st.role === 'manager' && !st.submitted && !st.approved && !wiActive),
+      submit: () => this.setState(x => ({ submitted: true, log: [{ v: 'v' + x.version, text: 'Отправлено на согласование', who: ROLE[x.role], at: nowS() }, ...x.log] })),
+      approveLabel: st.approved ? 'Утверждено' : `Утвердить v${st.version}`, approveDisabled: !(st.role === 'head' && st.submitted && !wiActive), exportDisabled: !st.approved || wiActive,
+      approve: () => this.approve(),
+      reject: () => this.setState(x => ({ submitted: false, rejectNote: '', log: [{ v: 'v' + x.version, text: 'Возвращено на доработку' + (x.rejectNote ? ': ' + x.rejectNote : ''), who: ROLE[x.role], at: nowS() }, ...x.log] })),
+      rejectDisabled: !(st.role === 'head' && st.submitted), rejectNote: st.rejectNote, setRejectNote: e => this.setState({ rejectNote: e.target.value }),
+      roleManager: st.role === 'manager', roleHead: st.role === 'head', setRoleManager: () => this.setState({ role: 'manager' }), setRoleHead: () => this.setState({ role: 'head' }),
+      flowHint: st.approved ? 'Утверждено. Экспорт доступен; отправка поставщику выполняется вне системы.' : st.submitted ? (st.role === 'head' ? 'Проверьте список и утвердите или верните на доработку.' : 'Ожидает решения руководителя. Любая правка вернёт версию в черновик.') : (st.role === 'manager' ? 'Проверьте количества и отправьте на согласование.' : 'Черновик у менеджера — утверждение доступно после отправки на согласование.'),
+      exportAll: () => this.exportCsv(null),
+      fileMaps, imports: ['SE', 'IEK'].map(b => ({ name: BR[b], isImp: !!this.imp[b], msg: st.impMsg[b] || (this.imp[b] ? 'используются загруженные выгрузки' : 'сейчас — демо-набор'), run: () => this.applyImport(b), reset: () => this.resetImport(b) })),
+      dataTag: anyImp ? 'Часть позиций — из загруженных выгрузок' : 'Позиции и числа по SKU — синтетика; объёмы выгрузок — реальные',
+      catTrends, showTrends: st.showTrends, trendsBtn: st.showTrends ? 'Скрыть' : 'Показать', toggleTrends: () => this.setState(x => ({ showTrends: !x.showTrends })),
+      useEst: () => { const v = Math.round(c.est * 100) / 100; this.setOv(s.id, () => ({ trend: v, trendSrc: 'оценка по истории (Тейл–Сен)' }), `${s.code}: прирост — оценка по истории ${Math.round(v * 100)}%`); },
+      setDPrice: this.setD('price'),
+      applyPrice: () => { if (d.price === '') return; const v = Math.max(0, parseFloat(d.price) || 0); this.setOv(s.id, () => ({ price: v }), `${s.code}: цена закупки введена вручную — ${n2(v)} за 1 ${s.pu}`); this.setState(x => ({ d: { ...x.d, price: '' } })); },
+      exp: st.exp,
+      setExpFmt: e => { const v = e.target.value; this.setState(x => ({ exp: { ...x.exp, fmt: v } })); },
+      setExpSep: e => { const v = e.target.value; this.setState(x => ({ exp: { ...x.exp, sep: v } })); },
+      setExpEnc: e => { const v = e.target.value; this.setState(x => ({ exp: { ...x.exp, enc: v } })); },
+      expCols: EXPCOLS.map(([k, l]) => ({ label: l, on: !!st.exp.cols[k], toggle: () => this.setState(x => ({ exp: { ...x.exp, cols: { ...x.exp.cols, [k]: !x.exp.cols[k] } } })) })),
+      btRows, btNote: anyImp ? 'Часть рядов — из загруженных выгрузок.' : 'Сейчас — на демо-наборе; после импорта считается по реальным рядам.',
+      tests, testsSummary: `Пройдено ${passed} из ${tests.length}`, testsTag: passed === tests.length ? 'tag-accent' : 'tag-outline',
+      usage: [
+        { k: 'Продажи по месяцам', v: 'Регулярный спрос, база прогноза (мар–авг)', s: 'используется', tag: 'tag-accent' },
+        { k: 'Детализация продаж', v: 'Разовые сделки, клиентские серии, возвраты, типы документов', s: 'используется', tag: 'tag-accent' },
+        { k: 'Товар в пути', v: 'Поступления по датам, ранний дефицит', s: 'используется', tag: 'tag-accent' },
+        { k: 'Справочники MOQ', v: 'Минимум и кратность, округление заказа', s: 'используется', tag: 'tag-accent' },
+        { k: 'Systeme TDSheet: свободный остаток, резерв, категории', v: 'Вычитание остатка, правила категорий', s: 'используется', tag: 'tag-accent' },
+        { k: 'Сезонность брендов', v: 'При импорте: средний коэффициент месяцев горизонта H к среднему году; единица измерения у партнёра не уточнена', s: 'используется', tag: 'tag-accent' },
+        { k: 'Остатки по месяцам', v: 'Нулевой начальный остаток → кандидат в stockout; применяется после подтверждения менеджером, не заменяет текущий снимок', s: 'используется', tag: 'tag-accent' },
+        { k: 'Systeme TDSheet: «СС реал», формулы AP/AQ', v: 'Не эталон: ошибка окна 13/12; «СС реал» не считается ценой', s: 'не используется', tag: 'tag-neutral' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

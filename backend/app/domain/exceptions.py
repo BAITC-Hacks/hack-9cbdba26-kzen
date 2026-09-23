@@ -10,10 +10,22 @@ class DomainError(Exception):
 
     code = "domain_error"
 
-    def __init__(self, message: str, *, details: dict | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        details: dict | None = None,
+        code: str | None = None,
+        field: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.details = details or {}
+        # Точный код нужен фронту, чтобы вести себя по-разному при одном HTTP-статусе:
+        # VERSION_CONFLICT → перезагрузить, REASON_REQUIRED → подсветить поле.
+        if code:
+            self.code = code
+        self.field = field
 
 
 class NotFoundError(DomainError):
@@ -29,6 +41,12 @@ class ConflictError(DomainError):
     версии, которую успели изменить после просмотра."""
 
     code = "conflict"
+
+
+class ForbiddenError(DomainError):
+    """Действие недоступно роли: например, менеджер пытается утвердить свой заказ."""
+
+    code = "FORBIDDEN_ROLE"
 
 
 class ModelError(DomainError):

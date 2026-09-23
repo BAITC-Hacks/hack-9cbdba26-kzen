@@ -18,6 +18,7 @@ from app.domain.exceptions import (
     ConflictError,
     DomainError,
     DomainValidationError,
+    ForbiddenError,
     ModelError,
     NotFoundError,
     StorageError,
@@ -29,16 +30,20 @@ STATUS_BY_EXCEPTION: dict[type[DomainError], int] = {
     NotFoundError: 404,
     DomainValidationError: 422,
     ConflictError: 409,
+    ForbiddenError: 403,
     ModelError: 503,
     StorageError: 503,
 }
 
 
-def _payload(code: str, message: str, details: dict | None = None) -> dict:
+def _payload(
+    code: str, message: str, details: dict | None = None, field: str | None = None
+) -> dict:
     return {
         "error": {
             "code": code,
             "message": message,
+            "field": field,
             "request_id": request_id_ctx.get(),
             "details": details or {},
         }
@@ -54,7 +59,8 @@ def register_error_handlers(app: FastAPI) -> None:
         else:
             logger.info("Доменная ошибка: %s", exc.message)
         return JSONResponse(
-            status_code=status, content=_payload(exc.code, exc.message, exc.details)
+            status_code=status,
+            content=_payload(exc.code, exc.message, exc.details, getattr(exc, "field", None)),
         )
 
     @app.exception_handler(RequestValidationError)

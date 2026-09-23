@@ -22,6 +22,7 @@ from app.domain.exceptions import ConflictError, DomainValidationError, NotFound
 
 class DraftStatus(StrEnum):
     DRAFT = "draft"
+    SUBMITTED = "submitted"  # менеджер отправил руководителю на согласование
     APPROVED = "approved"
 
 
@@ -59,6 +60,13 @@ class DraftLine:
     unit: str = "шт"
     status: LineStatus = LineStatus.READY
     issues: tuple[str, ...] = ()
+    issue_codes: tuple[str, ...] = ()
+    monthly_demand: float = 0.0
+    coverage_months: float = 0.0
+    # Шаги формулы (подпись, значение) — ровно те, что посчитал расчёт.
+    # Хранятся в версии, чтобы карточка утверждённого заказа не пересчитывалась
+    # по новым данным и показывала то, что видел менеджер.
+    reasons: tuple[tuple[str, str], ...] = ()
 
     @property
     def adjusted(self) -> bool:
@@ -147,7 +155,12 @@ class OrderDraft:
         """
         reason = reason.strip()
         if not reason:
-            raise DomainValidationError("Укажите причину корректировки", details={"code": code})
+            raise DomainValidationError(
+                "Укажите причину корректировки",
+                details={"code": code},
+                code="REASON_REQUIRED",
+                field="reason",
+            )
         if quantity < 0:
             raise DomainValidationError(
                 "Количество не может быть отрицательным", details={"quantity": quantity}
@@ -158,9 +171,9 @@ class OrderDraft:
         events = [
             DraftEvent(at, author, "adjust", f"{code}: {old.quantity} → {quantity} ({reason})")
         ]
-        if self.approved:
+        if self.status is not DraftStatus.DRAFT:
             events.append(
-                DraftEvent(at, author, "approval_reset", "заказ изменён после утверждения")
+                DraftEvent(at, author, "approval_reset", "заказ изменён после согласования")
             )
 
         return replace(
@@ -173,14 +186,59 @@ class OrderDraft:
             events=self.events + tuple(events),
         )
 
+    def clear_adjustment(self, code: str, *, author: str, at: datetime) -> OrderDraft:
+        """Вернуть рекомендацию расчёта. Это тоже изменение заказа: утверждение снимается."""
+        old = self.line(code)
+        if not old.adjusted:
+            return self
+        restored = replace(old, quantity=old.recommended, adjustment_reason="", adjusted_by="")
+        return replace(
+            self,
+            lines={**self.lines, code: restored},
+            status=DraftStatus.DRAFT,
+            revision=self.revision + 1,
+            approved_by="",
+            approved_at=None,
+            events=(*self.events, DraftEvent(
+                at, author, "clear_adjustment", f"{code}: {old.quantity} → {old.recommended}"
+            )),
+        )
+
+    def submit(self, *, author: str, revision: int, at: datetime) -> OrderDraft:
+        self.check_revision(revision)
+        if self.status is not DraftStatus.DRAFT:
+            raise ConflictError(
+                "Отправить на согласование можно только черновик",
+                details={"status": self.status.value}, code="ORDER_NOT_DRAFT",
+            )
+        return replace(self, status=DraftStatus.SUBMITTED, events=(
+            *self.events, DraftEvent(at, author, "submit", f"ревизия {self.revision}")
+        ))
+
+    def reject(self, *, author: str, revision: int, comment: str, at: datetime) -> OrderDraft:
+        self.check_revision(revision)
+        if self.status is not DraftStatus.SUBMITTED:
+            raise ConflictError(
+                "Вернуть на доработку можно только версию на согласовании",
+                details={"status": self.status.value}, code="ORDER_NOT_SUBMITTED",
+            )
+        return replace(self, status=DraftStatus.DRAFT, events=(
+            *self.events, DraftEvent(at, author, "reject", comment.strip() or "без комментария")
+        ))
+
+    def check_revision(self, revision: int) -> None:
+        """Человек действует над той ревизией, которую видел на экране."""
+        if revision != self.revision:
+            raise ConflictError(
+                "Заказ изменился с момента просмотра, обновите список",
+                details={"expected": revision, "current": self.revision},
+                code="VERSION_CONFLICT",
+            )
+
     def approve(self, *, author: str, revision: int, at: datetime) -> OrderDraft:
         if not author.strip():
             raise DomainValidationError("Укажите, кто утверждает заказ")
-        if revision != self.revision:
-            raise ConflictError(
-                "Заказ изменился с момента просмотра, обновите список перед утверждением",
-                details={"expected": revision, "current": self.revision},
-            )
+        self.check_revision(revision)
         if self.approved:
             raise ConflictError(
                 "Версия уже утверждена",
@@ -234,6 +292,7 @@ def draft_line(
     line: OrderLine,
     status: LineStatus = LineStatus.READY,
     issues: tuple[str, ...] = (),
+    issue_codes: tuple[str, ...] = (),
 ) -> DraftLine:
     return DraftLine(
         code=line.sku.code,
@@ -249,6 +308,10 @@ def draft_line(
         unit=getattr(line.sku, "unit", "шт"),
         status=status,
         issues=issues,
+        issue_codes=issue_codes,
+        monthly_demand=line.monthly_demand,
+        coverage_months=line.coverage_months,
+        reasons=tuple((r.label, r.value) for r in line.reasons),
     )
 
 
@@ -259,7 +322,7 @@ def draft_from_lines(
     params: dict[str, Any],
     author: str,
     at: datetime,
-    assessments: dict[str, tuple[LineStatus, tuple[str, ...]]] | None = None,
+    assessments: dict[str, tuple[LineStatus, tuple[str, ...], tuple[str, ...]]] | None = None,
     trace: tuple[TraceEvent, ...] = (),
 ) -> OrderDraft:
     """Заморозить результат расчёта в версию.
@@ -270,7 +333,9 @@ def draft_from_lines(
     """
     assessments = assessments or {}
     draft_lines = {
-        line.sku.code: draft_line(line, *assessments.get(line.sku.code, (LineStatus.READY, ())))
+        line.sku.code: draft_line(
+            line, *assessments.get(line.sku.code, (LineStatus.READY, (), ()))
+        )
         for line in lines
     }
     return OrderDraft(

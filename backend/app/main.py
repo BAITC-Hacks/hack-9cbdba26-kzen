@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.errors import register_error_handlers
 from app.api.middleware import MetricsCollector, register_middleware
-from app.api.routes import agent, drafts, health, orders
+from app.api.routes import agent, drafts, health, orders, ui
 from app.core.config import Settings, get_settings
 from app.core.container import Container, build_container
 from app.core.logging import setup_logging
@@ -84,6 +84,8 @@ def create_app(
     register_error_handlers(app)
 
     app.include_router(health.router)
+    # ui раньше orders: иначе GET /orders/{code} перехватит /orders/current и /orders/versions
+    app.include_router(ui.router, prefix=settings.api_prefix)
     app.include_router(orders.router, prefix=settings.api_prefix)
     app.include_router(drafts.router, prefix=settings.api_prefix)
     app.include_router(agent.router, prefix=settings.api_prefix)

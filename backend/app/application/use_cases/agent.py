@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 
 from app.application.use_cases.replenishment import CalcParams, CalculateOrders
@@ -83,9 +83,12 @@ class ProcurementTools:
     число: всё берётся из репозитория или из расчёта.
     """
 
-    def __init__(self, calculator: CalculateOrders, params: CalcParams) -> None:
+    def __init__(
+        self, calculator: CalculateOrders, params_for: Callable[[Sku], CalcParams]
+    ) -> None:
         self._calc = calculator
-        self._params = params
+        # Параметры зависят от позиции: у каждого поставщика свой срок поставки
+        self._params_for = params_for
 
     def inspect_data_quality(self, state: AgentState) -> dict[str, Any]:
         blocked: dict[str, list[str]] = {}
@@ -99,7 +102,7 @@ class ProcurementTools:
     def calculate_orders(self, state: AgentState) -> dict[str, Any]:
         for code, sku in state.skus.items():
             cleaned = prepare(sku.history)
-            line = self._calc.calculate_line(sku, self._params)
+            line = self._calc.calculate_line(sku, self._params_for(sku))
             state.cleaned[code] = cleaned
             state.lines[code] = line
             state.assessments[code] = assess(sku, line, cleaned)
@@ -176,9 +179,14 @@ class RunProcurementAgent:
         self._policy = policy or RulesPolicy()
 
     def execute(self, *, goal: str, supplier: str | None, category: str | None,
-                params: CalcParams, method: str, author: str) -> OrderDraft:
+                params: CalcParams, method: str, author: str,
+                params_by_supplier: dict[str, CalcParams] | None = None,
+                include_all: bool = False) -> OrderDraft:
+        """include_all — в версию попадают и позиции «заказывать не нужно»:
+        экрану рекомендаций они нужны, чтобы менеджер видел, что их проверили."""
+        by_supplier = params_by_supplier or {}
         state = AgentState(skus={s.code: s for s in self._repo.list_skus(supplier, category)})
-        tools = ProcurementTools(self._calc, params)
+        tools = ProcurementTools(self._calc, lambda sku: by_supplier.get(sku.supplier, params))
         state.log("decision", "ok", f"Цель: {goal}",
                   facts={"supplier": supplier, "category": category, "skus": len(state.skus)})
 
@@ -202,7 +210,8 @@ class RunProcurementAgent:
         # В версию попадают позиции к заказу и позиции без решения:
         # «недостаточно данных» нельзя молча превращать в ноль и прятать.
         codes = [c for c, x in state.lines.items()
-                 if x.needed or state.assessments[c].status is not LineStatus.READY]
+                 if include_all or x.needed
+                 or state.assessments[c].status is not LineStatus.READY]
         lines = [state.lines[c] for c in codes]
         counts = {s.value: 0 for s in LineStatus}
         for c in codes:
@@ -210,9 +219,10 @@ class RunProcurementAgent:
         state.log("decision", "ok", "Рекомендации сформированы", facts=counts)
         state.log("awaiting_approval", "waiting", "Ожидает утверждения менеджером")
 
-        recorded = {k: v for k, v in asdict(params).items() if k != "today"}
-        recorded |= {"supplier": supplier, "category": category, "method": method, "goal": goal}
-        assessments = {c: (a.status, a.messages) for c, a in state.assessments.items()}
+        recorded = _record(params)
+        recorded |= {"supplier": supplier, "category": category, "method": method, "goal": goal,
+                     "by_supplier": {k: _record(v) for k, v in by_supplier.items()}}
+        assessments = {c: (a.status, a.messages, a.codes) for c, a in state.assessments.items()}
         at = datetime.now(UTC)
         return self._store.create(lambda v: draft_from_lines(
             v, lines, params=recorded, author=author, at=at,
@@ -259,7 +269,7 @@ class ReplanInboundDelay:
         state.log("tool_call", "ok", "Проверен товар в пути", tool="get_inbound", sku=code,
                   facts={"counted_before": sku.in_transit, "counted_now": shifted.in_transit})
 
-        params = _params_from(draft.params)
+        params = _params_from(draft.params, sku)
         calculator = self._calculator_for(draft.params.get("method", "smoothed"))
         line = calculator.calculate_line(shifted, params)
         cleaned = prepare(shifted.history)
@@ -280,7 +290,7 @@ class ReplanInboundDelay:
                   facts={"before": old_qty, "after": line.quantity})
         state.log("awaiting_approval", "waiting", "Новая версия ожидает утверждения")
 
-        new_line = draft_line(line, assessment.status, assessment.messages)
+        new_line = draft_line(line, assessment.status, assessment.messages, assessment.codes)
         reason = f"поставка {delayed:.0f} шт по {code} задерживается до {new_eta}"
         at = datetime.now(UTC)
         derived = self._store.create(lambda v: draft.derive(
@@ -289,11 +299,22 @@ class ReplanInboundDelay:
         return derived, True
 
 
-def _params_from(recorded: dict[str, Any]) -> CalcParams:
+def _record(params: CalcParams) -> dict[str, Any]:
+    """Параметры в JSON-виде: дата расчёта строкой, чтобы версия сериализовалась."""
+    data = asdict(params)
+    data["today"] = params.today.isoformat() if params.today else None
+    return data
+
+
+def _params_from(recorded: dict[str, Any], sku: Sku) -> CalcParams:
     """Пересчёт идёт с теми же параметрами, что и исходная версия, иначе
     разница в заказе смешает эффект задержки с эффектом других настроек."""
-    names = set(CalcParams.__slots__) - {"today"}
-    return CalcParams(**{k: v for k, v in recorded.items() if k in names})
+    source = recorded.get("by_supplier", {}).get(sku.supplier, recorded)
+    names = set(CalcParams.__slots__)
+    values = {k: v for k, v in source.items() if k in names}
+    if values.get("today"):
+        values["today"] = date.fromisoformat(values["today"])
+    return CalcParams(**values)
 
 
 def _status(action: Action, observation: dict[str, Any]) -> str:

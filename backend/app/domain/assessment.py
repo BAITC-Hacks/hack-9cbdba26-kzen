@@ -43,6 +43,10 @@ class Assessment:
     def messages(self) -> tuple[str, ...]:
         return tuple(i.message for i in self.issues)
 
+    @property
+    def codes(self) -> tuple[str, ...]:
+        return tuple(i.code for i in self.issues)
+
 
 def data_issues(sku: Sku) -> list[Issue]:
     """Пробелы в данных, при которых считать количество нельзя или рискованно."""

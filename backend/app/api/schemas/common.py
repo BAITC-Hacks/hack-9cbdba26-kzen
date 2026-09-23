@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 class ErrorPayload(BaseModel):
     code: str = Field(examples=["not_found"])
     message: str = Field(examples=["Объект 'A-17' не найден в датасете"])
+    field: str | None = Field(default=None, description="Поле формы, к которому относится ошибка")
     request_id: str = Field(examples=["3f1c2b9a"])
     details: dict = Field(default_factory=dict)
 

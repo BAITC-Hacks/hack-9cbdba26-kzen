@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
+from app.application.use_cases.workspace import Workspace
 from app.core.config import Settings
 from app.domain.ports import CachePort, ForecasterPort, NarratorPort, SkuRepositoryPort
 from app.infrastructure.storage.draft_store import MemoryDraftStore
@@ -29,6 +30,10 @@ class Container:
     # Версии расчёта живут столько же, сколько процесс: одно хранилище на сервис,
     # а не на запрос, иначе утверждение потеряется между двумя вызовами API.
     drafts: MemoryDraftStore = field(default_factory=MemoryDraftStore)
+    # Состояние рабочего места: роль, текущий заказ, настройки расчёта
+    workspace: Workspace = field(default_factory=Workspace)
+    # imported — данные партнёра, demo — синтетика на реальных кодах
+    data_mode: str = "imported"
 
     @property
     def degraded(self) -> bool:
@@ -59,7 +64,15 @@ async def build_container(
     «здесь такой репозиторий», подменять его на заглушку нельзя.
     """
     warnings: list[str] = []
-    repo = repo if repo is not None else _build_repo(settings, warnings)
+    data_mode = "imported"
+    if repo is None:
+        repo = _build_repo(settings, warnings)
+        if settings.demo_fallback and not repo.stats().get("skus"):
+            from app.infrastructure.storage.demo_data import build_demo_repository
+
+            repo = build_demo_repository()
+            data_mode = "demo"
+            warnings.append("Данные партнёра не загружены; работаем на демо-наборе")
     cache = cache if cache is not None else await _build_cache(settings, warnings)
     narrator = narrator if narrator is not None else _build_narrator(settings, warnings)
 
@@ -70,6 +83,7 @@ async def build_container(
         forecasters=_build_forecasters(),
         narrator=narrator,
         warnings=warnings,
+        data_mode=data_mode,
     )
     logger.info("Контейнер собран", extra={"components": container.describe()})
     for message in warnings:

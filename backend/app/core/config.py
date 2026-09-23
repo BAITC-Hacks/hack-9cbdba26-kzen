@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     # Каталог с xlsx партнёра. Контейнер читает его при старте; без поля
     # сервис падал в lifespan, а тесты этого не видели — там контейнер подменён.
     data_dir: Path | None = ROOT / "data"
+    # Нет данных партнёра — поднимаемся на демо-наборе, чтобы фронт и демо работали.
+    # В шапке интерфейса режим честно помечается как demo.
+    demo_fallback: bool = True
     dataset_path: Path = ROOT / "data" / "dataset.parquet"
     id_column: str = "subject_id"
     exclude_columns: list[str] = Field(default_factory=lambda: ["target"])

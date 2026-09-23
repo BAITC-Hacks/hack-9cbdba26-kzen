@@ -18,13 +18,13 @@ check: ## Прогнать самопроверку по требованиям 
 api: ## Запустить сервис локально с автоперезагрузкой
 	uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-up: ## Поднять сервис в Docker (профили: make up PROFILES="--profile redis")
-	@test -f .env || cp .env.example .env
-	docker compose $(PROFILES) up --build -d
-	@echo "Swagger: http://localhost:8000/docs"
+up: ## Поднять frontend, API и Redis в Docker
+	docker compose up --build -d
+	@echo "Интерфейс: http://localhost:3000"
+	@echo "Swagger:   http://localhost:3000/docs"
 
 down: ## Остановить контейнеры
-	docker compose --profile redis --profile db down
+	docker compose down
 
 logs: ## Логи сервиса
 	docker compose logs -f api

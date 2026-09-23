@@ -91,7 +91,7 @@
 | Часть | Технологии |
 |---|---|
 | Backend | Python 3.11, FastAPI, Pydantic, Uvicorn |
-| Расчёты и Excel | pandas, NumPy, openpyxl |
+| Расчёты и Excel | стандартная библиотека Python, openpyxl |
 | Frontend | React 19, TypeScript, Vite |
 | Кэш | память процесса; Redis — необязательный адаптер |
 | Текстовые объяснения | локальный шаблон или OpenAI-совместимый Chat Completions API |
@@ -183,18 +183,27 @@ npm run dev
 
 ### Docker
 
-Файл `.env` требуется Docker Compose, но может быть пустым:
+Одна команда собирает и запускает frontend, backend и Redis:
 
 ```bash
-touch .env
-docker compose up --build -d
+docker compose up
 ```
 
-Этот compose-файл поднимает backend на порту `8000`; frontend запускается отдельно.
-Необязательный Redis включается командой:
+После запуска доступны:
+
+- интерфейс — <http://localhost:3000>;
+- Swagger — <http://localhost:3000/docs>;
+- healthcheck — <http://localhost:3000/health>.
+
+Compose не требует `.env`: по умолчанию используются Redis, шаблонные объяснения
+и Excel-файлы из `data/`. Если данные отсутствуют, API переключается на демо-набор.
+Для необязательных LLM-объяснений перед запуском можно задать `NARRATOR_BACKEND`,
+`OPENAI_API_KEY`, `OPENAI_BASE_URL` и `OPENAI_MODEL` в окружении или `.env`.
+
+Остановить стек:
 
 ```bash
-docker compose --profile redis up --build -d
+docker compose down
 ```
 
 ## Как проверить решение

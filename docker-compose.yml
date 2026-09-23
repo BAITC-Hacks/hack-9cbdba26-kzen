@@ -1,57 +1,51 @@
-# Базовый запуск поднимает только сервис:  docker compose up
-# Redis и Postgres включаются профилями:   docker compose --profile redis --profile db up
-#
-# Профили — это архитектурное решение, а не украшение: лишний сервис в компоузе
-# означает лишнюю точку отказа на демо и минуты ожидания при старте.
+name: kzen
 
 services:
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
   api:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env
     environment:
-      # Пути внутри контейнера отличаются от локальных — задаём явно.
-      MODEL_PATH: /srv/ml/artifacts/model.joblib
-      MODEL_METADATA_PATH: /srv/ml/artifacts/metadata.json
-      DATASET_PATH: /srv/data/dataset.parquet
+      # Значения заданы явно, чтобы `docker compose up` работал без файла .env.
+      APP_NAME: KZen
+      DEBUG: "false"
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_JSON: ${LOG_JSON:-true}
+      DATA_DIR: /srv/data
+      DEMO_FALLBACK: ${DEMO_FALLBACK:-true}
+      CACHE_BACKEND: redis
+      REDIS_URL: redis://redis:6379/0
+      NARRATOR_BACKEND: ${NARRATOR_BACKEND:-template}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
     volumes:
-      # Артефакты и данные монтируем, чтобы переобучение не требовало пересборки образа.
-      - ./ml/artifacts:/srv/ml/artifacts
-      - ./data:/srv/data
+      # Расчёт не изменяет исходные книги, поэтому контейнер получает их read-only.
+      - ./data:/srv/data:ro
+    expose:
+      - "8000"
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    profiles: ["redis"]
-    ports:
-      - "6379:6379"
-    command: redis-server --save "" --appendonly no  # кэш, а не база: персистентность не нужна
+    command: redis-server --save "" --appendonly no
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
+      interval: 5s
       timeout: 3s
-      retries: 3
-
-  db:
-    image: postgres:16-alpine
-    profiles: ["db"]
-    environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
-      POSTGRES_DB: app
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-
-volumes:
-  pgdata:
+      retries: 10
+    restart: unless-stopped

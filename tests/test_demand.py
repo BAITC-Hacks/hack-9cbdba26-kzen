@@ -9,6 +9,7 @@ from datetime import date
 import pytest
 from tests.conftest import history
 
+from app.domain.assessment import assess
 from app.domain.demand import (
     compensate_stockouts,
     growth_factor,
@@ -16,7 +17,7 @@ from app.domain.demand import (
     remove_bulk_orders,
     seasonality_factor,
 )
-from app.domain.entities import BulkOrderEvent, MonthPoint
+from app.domain.entities import BulkOrderEvent, MonthPoint, OrderLine, Sku, Urgency
 
 
 def test_bulk_order_is_trimmed_to_expected_level():
@@ -62,6 +63,38 @@ def test_stockout_with_sales_is_not_lowered():
     cleaned, _, _ = compensate_stockouts(history(sales, stocks))
 
     assert cleaned[23].sold == pytest.approx(100.0)
+
+
+@pytest.mark.parametrize(
+    ("sales", "stocks", "expected"),
+    [
+        (
+            [1.0] * 8 + [0.0] * 25,
+            [100.0] * 8 + [0.0] * 25,
+            "В 25 из 33 мес начальный остаток нулевой или не указан; "
+            "спрос восстановлен оценкой в 25 мес",
+        ),
+        (
+            [1.0] * 7 + [0.0] * 25 + [1.0],
+            [100.0] * 7 + [0.0] * 26,
+            "В 26 из 33 мес начальный остаток нулевой или не указан; "
+            "спрос восстановлен оценкой в 25 мес",
+        ),
+    ],
+)
+def test_stockout_warning_distinguishes_zero_stock_from_compensation(sales, stocks, expected):
+    points = history(sales, stocks)
+    sku = Sku(code="010300239_", name="Тест", supplier="IEK", history=points)
+    cleaned = prepare(points)
+    line = OrderLine(
+        sku=sku, quantity=0, urgency=Urgency.NONE,
+        monthly_demand=1.0, coverage_months=0.0,
+    )
+
+    issue = next(item for item in assess(sku, line, cleaned).issues
+                 if item.code == "frequent_stockout")
+
+    assert issue.message == expected
 
 
 def test_seasonality_reflects_month_profile():

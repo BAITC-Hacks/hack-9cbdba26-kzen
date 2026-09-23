@@ -111,6 +111,8 @@ export interface SkuExplanation {
   urgency: Urgency;
   excess: boolean;
   issues: Array<{ key: string; text: string }>;
+  events?: Array<{ id: string; title_text: string; note_text: string }>;
+  stockouts?: Array<{ id: string; title_text: string; note_text: string }>;
   chart: {
     base_from: Month; base_to: Month;
     months: Array<{ month: Month; label: string; sales: number; restored: number; one_off_excluded: number; one_off_included: number; in_base: boolean; partial: boolean; missing: boolean }>;

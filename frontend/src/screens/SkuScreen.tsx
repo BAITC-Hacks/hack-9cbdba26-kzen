@@ -1,19 +1,37 @@
 import { useEffect, useState } from 'react'
 import type { SkuExplanation, SkuId } from '../types'
-import { getSkuExplanation } from '../api/client'
+import { getSkuExplanation, skuAction } from '../api/client'
 
-interface Props { skuId: SkuId | null; onBack: () => void }
+interface Props { skuId: SkuId | null; onBack: () => void; onSkuChange: (id: SkuId) => void }
 
-export default function SkuScreen({ skuId, onBack }: Props) {
+export default function SkuScreen({ skuId, onBack, onSkuChange }: Props) {
   const [data, setData] = useState<SkuExplanation | null>(null)
+  const [qty, setQty] = useState('')
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     if (!skuId) return
-    getSkuExplanation(skuId).then(setData)
+    getSkuExplanation(skuId).then(setData).catch(cause => setError(String(cause)))
   }, [skuId])
 
+  async function applyManual(action: 'set_manual_qty' | 'clear_manual_qty') {
+    if (!skuId || !data) return
+    setSaving(true)
+    setError('')
+    try {
+      const payload = action === 'set_manual_qty' ? { action, qty: Number(qty), reason: reason.trim(), order_version: data.header.order.version } : { action, order_version: data.header.order.version }
+      await skuAction(skuId, payload)
+      setData(await getSkuExplanation(skuId))
+      setQty('')
+      setReason('')
+    } catch (cause) { setError(`Не удалось сохранить правку: ${String(cause)}`) }
+    finally { setSaving(false) }
+  }
+
   if (!skuId || !data) return (
-    <div style={{ padding: 24 }}>
+    <div className="page">
       <p style={{ color: 'var(--color-neutral-600)' }}>Выберите позицию из таблицы рекомендаций.</p>
       <button className='btn' style={{ marginTop: 12 }} onClick={onBack}>← Назад</button>
     </div>
@@ -22,11 +40,12 @@ export default function SkuScreen({ skuId, onBack }: Props) {
   const maxSales = Math.max(...data.chart.months.map(m => Math.max(m.sales, m.restored)), ...data.chart.forecast.map(f => f.qty), 1)
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <button className='btn btn-ghost' onClick={onBack}>← Назад</button>
-        <h1 style={{ fontSize: 20 }}>{data.sku.name}</h1>
+    <div className="page">
+      <div className="page-head">
+        <div><button className='btn btn-ghost' onClick={onBack}>← К рекомендациям</button><h1 style={{ marginTop: 10 }}>{data.sku.name}</h1><p className="page-subtitle">История и прогноз, поправки спроса, остатки, поступления и пошаговая арифметика заказа.</p></div>
+        <div className="inline-actions"><button className="btn btn-secondary" disabled={!data.nav.prev_sku_id} onClick={() => data.nav.prev_sku_id && onSkuChange(data.nav.prev_sku_id)}>← Предыдущая</button><button className="btn btn-secondary" disabled={!data.nav.next_sku_id} onClick={() => data.nav.next_sku_id && onSkuChange(data.nav.next_sku_id)}>Следующая →</button></div>
       </div>
+      {error && <div className="notice" role="alert" style={{ marginBottom: 16 }}>{error}</div>}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
         <span className='tag tag-outline'>{data.sku.code_1c}</span>
@@ -34,11 +53,14 @@ export default function SkuScreen({ skuId, onBack }: Props) {
         <span className='tag tag-outline'>{data.sku.supplier.name}</span>
         <span className='tag tag-outline'>Кат. {data.sku.category}</span>
         {data.status === 'order' && <span className='tag tag-accent'>Заказать</span>}
-        {data.urgency === 'urgent' && <span style={{ color: '#c0392b', fontWeight: 600, fontSize: 13 }}>Срочно</span>}
+        {data.urgency === 'urgent' && <span className="tag tag-outline">Срочно</span>}
+        {data.excess && <span className="tag tag-neutral">Избыточный запас</span>}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>        <div>
-          <h2 style={{ fontSize: 16, marginBottom: 12 }}>Динамика продаж и прогноз</h2>
+      {data.issues.length > 0 && <div className="notice" style={{ marginBottom: 20 }}>{data.issues.map(issue => <div key={issue.key}>{issue.text}</div>)}</div>}
+
+      <div className="data-two-column">        <div>
+          <h2 style={{ marginBottom: 12 }}>История и прогноз</h2>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 120, marginBottom: 8 }}>
             {data.chart.months.map(m => {
               const val = m.restored > 0 ? m.restored : m.sales
@@ -81,14 +103,22 @@ export default function SkuScreen({ skuId, onBack }: Props) {
             </table>
           </div>
 
+          <div className="page-section">
+            <h3 className="card-title" style={{ fontSize: 18, marginBottom: 8 }}>Поправки спроса</h3>
+            <p className="tiny">Разовые продажи и периоды отсутствия товара показываются по расчёту. Подтверждение периодов выполняется в источнике данных.</p>
+            {data.events?.map(event => <div className="blueprint panel" style={{ marginTop: 8 }} key={event.id}><strong>{event.title_text}</strong><p className="tiny" style={{ marginTop: 4 }}>{event.note_text}</p></div>)}
+            {data.stockouts?.map(item => <div className="blueprint panel" style={{ marginTop: 8 }} key={item.id}><strong>{item.title_text}</strong><p className="tiny" style={{ marginTop: 4 }}>{item.note_text}</p></div>)}
+            {!data.events?.length && !data.stockouts?.length && <p className="muted" style={{ marginTop: 8 }}>Поправки для этой позиции не применялись.</p>}
+          </div>
+
           <div style={{ marginTop: 16 }}>
             <h3 style={{ fontSize: 13, marginBottom: 8, fontFamily: 'var(--font-body)', fontWeight: 600 }}>Остатки и поступления</h3>
             <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-              <div style={{ background: 'white', border: '1px solid var(--color-divider)', borderRadius: 2, padding: '8px 12px', flex: 1 }}>
+              <div className="blueprint" style={{ padding: '8px 12px', flex: 1 }}>
                 <div style={{ fontSize: 20, fontFamily: 'var(--font-heading)', fontWeight: 600 }}>{data.stock.free ?? '—'}</div>
                 <div style={{ fontSize: 11, color: 'var(--color-neutral-600)' }}>свободно · {data.stock.cover_text}</div>
               </div>
-              <div style={{ background: 'white', border: '1px solid var(--color-divider)', borderRadius: 2, padding: '8px 12px', flex: 1 }}>
+              <div className="blueprint" style={{ padding: '8px 12px', flex: 1 }}>
                 <div style={{ fontSize: 20, fontFamily: 'var(--font-heading)', fontWeight: 600 }}>{data.stock.reserve}</div>
                 <div style={{ fontSize: 11, color: 'var(--color-neutral-600)' }}>в резерве</div>
               </div>
@@ -110,7 +140,7 @@ export default function SkuScreen({ skuId, onBack }: Props) {
             )}
           </div>
         </div>        <div>
-          <h2 style={{ fontSize: 16, marginBottom: 12 }}>Расчёт рекомендации</h2>
+          <h2 style={{ marginBottom: 12 }}>Расчёт рекомендации</h2>
           <div className='notice' style={{ marginBottom: 16 }}>{data.explanation_text}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {data.steps.map(step => (
@@ -130,21 +160,21 @@ export default function SkuScreen({ skuId, onBack }: Props) {
             ))}
           </div>
 
-          <div style={{ marginTop: 24, padding: 16, border: '1px solid var(--color-divider)', borderRadius: 2 }}>
-            <h3 style={{ fontSize: 13, marginBottom: 12, fontFamily: 'var(--font-body)', fontWeight: 600 }}>Ручная корректировка</h3>
+          <div className="blueprint panel" style={{ marginTop: 24 }}>
+            <h3 className="card-title" style={{ marginBottom: 12 }}>Ручная корректировка</h3>
             {data.manual.active
-              ? <div className='notice'>Активна ручная корректировка: {data.manual.qty} шт. — {data.manual.note_text}</div>
-              : <div style={{ display: 'flex', gap: 8 }}>
+              ? <div><div className='notice'>Активна ручная корректировка: {data.manual.qty} {data.sku.purchase_unit}. {data.manual.reason} {data.manual.note_text}</div><button type="button" className="btn btn-secondary" style={{ marginTop: 10 }} onClick={() => void applyManual('clear_manual_qty')} disabled={saving}>Вернуть рекомендацию</button></div>
+              : <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <div className='field' style={{ flex: 1 }}>
-                    <label>Кол-во (шт.)</label>
-                    <input className='input' type='number' placeholder='Введите вручную...' />
+                    <label htmlFor="manual-qty">Количество ({data.sku.purchase_unit})</label>
+                    <input id="manual-qty" className='input' type='number' min="0" step="1" placeholder='Введите вручную' value={qty} onChange={event => setQty(event.target.value)} />
                   </div>
                   <div className='field' style={{ flex: 2 }}>
-                    <label>Причина</label>
-                    <input className='input' type='text' placeholder='Причина изменения...' />
+                    <label htmlFor="manual-reason">Причина</label>
+                    <input id="manual-reason" className='input' type='text' placeholder='Укажите причину изменения' value={reason} onChange={event => setReason(event.target.value)} />
                   </div>
                   <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                    <button className='btn btn-primary'>Сохранить</button>
+                    <button className='btn btn-primary' disabled={saving || qty === '' || Number(qty) < 0 || !reason.trim()} onClick={() => void applyManual('set_manual_qty')}>Сохранить</button>
                   </div>
                 </div>
             }

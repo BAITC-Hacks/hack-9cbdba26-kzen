@@ -59,7 +59,7 @@ export default function App() {
           />
         )}
         {screen === 3 && (
-          <SkuScreen skuId={skuId} onBack={() => setScreen(2)} />
+          <SkuScreen key={skuId} skuId={skuId} onBack={() => setScreen(2)} onSkuChange={setSkuId} />
         )}
         {screen === 4 && <ReviewScreen />}
         {screen === 5 && <ValidationScreen />}

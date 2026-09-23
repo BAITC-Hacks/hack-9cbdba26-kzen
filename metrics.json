@@ -1,19 +1,57 @@
 {
-  "task": "supplier_replenishment",
-  "primary_metric": "requirements_pass_rate",
-  "direction": "maximize",
-  "baseline": "12m_mean_x_growth_x_seasonality",
-  "improved_variant": "exponential_smoothing",
-  "self_checks": {
-    "passed": 5,
-    "total": 5,
-    "pass_rate": 1.0
+  "task": "supplier_replenishment_business_effect",
+  "scope": {
+    "skus": 3909,
+    "suppliers": [
+      "IEK",
+      "Systeme Electric"
+    ],
+    "data_period": "2024-01..2026-09"
   },
-  "automated_tests": {
-    "passed": 40,
-    "total": 40
+  "primary_metric": "counterfactual_reorder_quantity",
+  "direction": "reduce one-off overorder and stockout underorder",
+  "comparison": {
+    "baseline_total_nominal_quantity": 154988,
+    "smoothed_total_nominal_quantity": 205209,
+    "baseline_higher_positions": 151,
+    "smoothed_higher_positions": 340,
+    "equal_positions": 3418
+  },
+  "confirmed_invoice_candidates": {
+    "candidate_positions": 56,
+    "candidate_events": 56,
+    "affected_positions": 4,
+    "nominal_quantity": 28,
+    "quantity_by_unit": {
+      "шт": 28
+    },
+    "systeme_excess_cost_tenge": 14930.95,
+    "systeme_priced_positions": 1
+  },
+  "all_bulk_outliers": {
+    "affected_positions": 207,
+    "nominal_quantity": 18362,
+    "quantity_by_unit": {
+      "м": 4040,
+      "упак": 81,
+      "шт": 14241
+    },
+    "systeme_excess_cost_tenge": 3111319.87,
+    "systeme_priced_positions": 40
+  },
+  "stockout_compensation": {
+    "affected_positions": 435,
+    "nominal_quantity": 13168,
+    "quantity_by_unit": {
+      "компл": 1,
+      "м": 5830,
+      "упак": 167,
+      "шт": 7170
+    },
+    "systeme_excess_cost_tenge": 0.0,
+    "systeme_priced_positions": 0
   },
   "forecast_accuracy": null,
   "recommendation": "KEEP BASELINE",
-  "reason": "Baseline is reproducible and passes requirements; forecast superiority needs chronological backtest."
+  "reason": "Правила выбросов и stockout дают измеримый контрфактический эффект; превосходство smoothed по точности требует хронологического backtest."
 }

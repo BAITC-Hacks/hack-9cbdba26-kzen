@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.logging import request_id_ctx
 from app.domain.exceptions import (
+    ConflictError,
     DomainError,
     DomainValidationError,
     ModelError,
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 STATUS_BY_EXCEPTION: dict[type[DomainError], int] = {
     NotFoundError: 404,
     DomainValidationError: 422,
+    ConflictError: 409,
     ModelError: 503,
     StorageError: 503,
 }

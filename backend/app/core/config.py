@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     model_metadata_path: Path = ROOT / "ml" / "artifacts" / "metadata.json"
 
     # --- данные ---
+    # Каталог с xlsx партнёра. Контейнер читает его при старте; без поля
+    # сервис падал в lifespan, а тесты этого не видели — там контейнер подменён.
+    data_dir: Path | None = ROOT / "data"
     dataset_path: Path = ROOT / "data" / "dataset.parquet"
     id_column: str = "subject_id"
     exclude_columns: list[str] = Field(default_factory=lambda: ["target"])

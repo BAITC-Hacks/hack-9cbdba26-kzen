@@ -24,6 +24,13 @@ class DomainValidationError(DomainError):
     code = "validation_error"
 
 
+class ConflictError(DomainError):
+    """Действие противоречит текущему состоянию объекта: например, утверждение
+    версии, которую успели изменить после просмотра."""
+
+    code = "conflict"
+
+
 class ModelError(DomainError):
     code = "model_error"
 

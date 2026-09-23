@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 from app.core.config import Settings
 from app.domain.ports import CachePort, ForecasterPort, NarratorPort, SkuRepositoryPort
+from app.infrastructure.storage.draft_store import MemoryDraftStore
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,9 @@ class Container:
     forecasters: dict[str, ForecasterPort]
     narrator: NarratorPort | None = None
     warnings: list[str] = field(default_factory=list)
+    # Версии расчёта живут столько же, сколько процесс: одно хранилище на сервис,
+    # а не на запрос, иначе утверждение потеряется между двумя вызовами API.
+    drafts: MemoryDraftStore = field(default_factory=MemoryDraftStore)
 
     @property
     def degraded(self) -> bool:

@@ -168,7 +168,8 @@ def calculate(c: Container) -> dict[str, Any]:
         ws.current_version = draft.version
         ws.calc_at = datetime.now(UTC)
         ws.calc_stale = False
-    to_order = sum(1 for x in draft.lines.values() if x.quantity > 0)
+    # Та же классификация, что в сводке таблицы: иначе тост и счётчик «к заказу» расходятся
+    to_order = sum(1 for x in draft.lines.values() if row_status(x) == "order")
     return {
         "header": header(c),
         "order": order_current(c),

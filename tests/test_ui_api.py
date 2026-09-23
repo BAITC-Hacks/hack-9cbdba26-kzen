@@ -167,3 +167,9 @@ def test_card_uses_invoice_bulk_like_calculation(settings):
         card = client.get(f"{B}/skus/SE:300200430_/explanation").json()
     notes = " ".join(e["note_text"] for e in card["events"])
     assert "TEST-1" in notes
+
+
+def test_calculation_toast_matches_table_summary(ui):
+    toast = ui.post(f"{B}/calculations", json={}).json()["toast"]
+    summary = ui.post(f"{B}/recommendations/search", json={}).json()["summary"]
+    assert f"{summary['order']} поз. к заказу" in toast

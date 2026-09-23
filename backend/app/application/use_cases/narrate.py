@@ -70,7 +70,6 @@ def _is_negated_adjustment(text: str, match: re.Match[str], action: str) -> bool
     start = max(text.rfind(mark, 0, match.start()) for mark in (".", ";", ",", "\n")) + 1
     ends = [text.find(mark, match.end()) for mark in (".", ";", ",", "\n")]
     end = min((pos for pos in ends if pos >= 0), default=len(text))
-    clause = text[start:end]
     action_match = re.search(rf"(?:{action})\w*", match.group())
     if action_match is None:
         return False

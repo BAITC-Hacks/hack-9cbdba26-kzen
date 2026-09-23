@@ -48,16 +48,44 @@ def has_unsupported_adjustment_claim(text: str, context: dict[str, Any]) -> bool
         str(reason.get("label", "")) for reason in context.get("reasons") or []
     ).lower()
     claim = text.lower()
-    one_off_claim = re.search(
+    one_off_claims = re.finditer(
         r"разов\w*.{0,60}исключ\w*|исключ\w*.{0,60}разов\w*", claim
     )
-    if one_off_claim and "разов" not in labels:
+    if "разов" not in labels and any(
+        not _is_negated_adjustment(claim, match, "исключ") for match in one_off_claims
+    ):
         return True
-    stockout_claim = re.search(
+    stockout_claims = re.finditer(
         r"восстанов\w*.{0,60}спрос|спрос.{0,60}восстанов\w*|компенсац\w*.{0,60}отсутств",
         claim,
     )
-    return bool(stockout_claim and "компенсац" not in labels)
+    return "компенсац" not in labels and any(
+        not _is_negated_adjustment(claim, match, "восстанов|компенсац")
+        for match in stockout_claims
+    )
+
+
+def _is_negated_adjustment(text: str, match: re.Match[str], action: str) -> bool:
+    """Отрицание относится к самой поправке, а не к соседнему факту."""
+    start = max(text.rfind(mark, 0, match.start()) for mark in (".", ";", ",", "\n")) + 1
+    ends = [text.find(mark, match.end()) for mark in (".", ";", ",", "\n")]
+    end = min((pos for pos in ends if pos >= 0), default=len(text))
+    clause = text[start:end]
+    action_match = re.search(rf"(?:{action})\w*", match.group())
+    if action_match is None:
+        return False
+    action_start = match.start() + action_match.start()
+    action_end = match.start() + action_match.end()
+    before = text[start:action_start]
+    after = text[action_end:end]
+    # «не были исключены» и «спрос не восстановлен» не заявляют поправку.
+    if re.search(r"\b(?:не|нет|без)\s+(?:\w+\s+){0,2}$", before):
+        return True
+    # Существительное с явным отрицанием: «исключение ... не проводилось».
+    return bool(re.search(
+        r"\bне\s+(?:был\w*|проводил\w*|выполнял\w*|применял\w*|"
+        r"производил\w*|учитывал\w*)\b", after,
+    ))
 
 
 def _flatten(value: Any) -> str:

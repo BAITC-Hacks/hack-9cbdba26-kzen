@@ -16,7 +16,7 @@ from app.domain.workflow import DraftLine
 from app.infrastructure.cache.memory import MemoryCache
 from app.infrastructure.forecasting.baseline import BaselineForecaster
 from app.infrastructure.forecasting.smoothed import SmoothedForecaster
-from app.infrastructure.llm.openai_compat import build_prompt
+from app.infrastructure.llm.openai_compat import SYSTEM_PROMPT, build_prompt
 from app.infrastructure.llm.template import TemplateNarrator
 from app.infrastructure.storage.demo_data import build_demo_repository
 from app.main import create_app
@@ -72,6 +72,22 @@ def test_prompt_is_about_procurement_not_scoring():
     assert "риск" not in prompt.lower()
 
 
+def test_prompt_mentions_only_adjustments_present_in_reasons():
+    context = {
+        **CONTEXT,
+        "reasons": [{"label": "Компенсация отсутствия товара", "value": "25 мес, +126 шт"}],
+    }
+    prompt = build_prompt(context)
+    assert "Компенсация отсутствия товара: 25 мес, +126 шт" in prompt
+    assert "разов" not in prompt.lower()
+    assert "только при наличии соответствующей строки" in SYSTEM_PROMPT
+    assert "если строка отсутствует, не упоминай эту" in SYSTEM_PROMPT
+
+    without_adjustments = build_prompt({**CONTEXT, "reasons": []})
+    assert "Применённые компоненты расчёта:\n  - не указаны" in without_adjustments
+    assert "разов" not in without_adjustments.lower()
+
+
 @pytest.mark.parametrize(
     ("text", "ok"),
     [
@@ -89,6 +105,14 @@ def test_narrative_rejects_adjustments_missing_from_calculation():
     context = {**CONTEXT, "reasons": []}
     assert has_unsupported_adjustment_claim("Разовая продажа исключена.", context)
     assert has_unsupported_adjustment_claim("Спрос восстановлен за месяцы без товара.", context)
+    for negated in (
+        "Разовые продажи не исключались.",
+        "Исключение разовых продаж не проводилось.",
+        "Спрос не восстановлен за месяцы без товара.",
+        "Восстановления спроса не было.",
+        "Компенсация отсутствия товара не применялась.",
+    ):
+        assert not has_unsupported_adjustment_claim(negated, context)
     assert not has_unsupported_adjustment_claim("Свободный остаток исчерпан.", context)
     assert not has_unsupported_adjustment_claim("Разовая продажа исключена.", CONTEXT)
     compensated = {**context, "reasons": [{"label": "Компенсация отсутствия товара"}]}

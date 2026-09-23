@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { AppHeader, RecommendationsPage, SkuId } from './types'
+import type { AgentTraceEvent, AppHeader, RecommendationsPage, SkuId } from './types'
 import { getSession, runCalculation, searchRecommendations } from './api/client'
 import TopNav from './components/layout/TopNav'
 import ContextBar from './components/layout/ContextBar'
@@ -14,13 +14,16 @@ export default function App() {
   const [skuId, setSkuId] = useState<SkuId | null>(null)
   const [header, setHeader] = useState<AppHeader | null>(null)
   const [recommendations, setRecommendations] = useState<RecommendationsPage | null>(null)
+  const [agentTrace, setAgentTrace] = useState<AgentTraceEvent[]>([])
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
-    getSession().then(session => setHeader(current => current ?? session))
+    getSession().then(session => setHeader(current => current ?? session)).catch(error => setLoadError(String(error)))
     searchRecommendations({}).then(d => {
       setRecommendations(d)
       setHeader(d.header)
-    })
+      setLoadError('')
+    }).catch(error => setLoadError(`Не удалось загрузить рекомендации: ${String(error)}`))
   }, [])
 
   function handleSkuClick(id: SkuId) {
@@ -29,24 +32,38 @@ export default function App() {
   }
 
   async function handleCalculate() {
-    await runCalculation()
+    const calculation = await runCalculation()
     const data = await searchRecommendations({})
     setRecommendations(data)
     setHeader(data.header)
+    setAgentTrace(calculation.agent.trace)
+    setLoadError('')
     setScreen(2)
   }
 
   function openScreen(next: number) {
     if (next === 2 && !recommendations) {
-      searchRecommendations({}).then(result => { setRecommendations(result); setHeader(result.header) })
+      searchRecommendations({}).then(result => {
+        setRecommendations(result)
+        setHeader(result.header)
+        setLoadError('')
+      }).catch(error => setLoadError(`Не удалось загрузить рекомендации: ${String(error)}`))
+    }
+    if (next === 1 || next === 5) {
+      getSession().then(setHeader).catch(error => setLoadError(String(error)))
     }
     setScreen(next as 1 | 2 | 3 | 4 | 5)
+  }
+
+  function handleOrderChanged(updatedHeader: AppHeader) {
+    setHeader(updatedHeader)
+    setRecommendations(null)
   }
 
   if (!header) {
     return (
       <div style={{ padding: 40, fontFamily: 'var(--font-body)', color: 'var(--color-neutral-600)' }}>
-        Загрузка…
+        {loadError || 'Загрузка…'}
       </div>
     )
   }
@@ -57,19 +74,21 @@ export default function App() {
       <ContextBar header={header} />
       <main style={{ flex: 1 }}>
         {screen === 1 && (
-          <DataScreen header={header} onCalculate={handleCalculate} onReset={resetHeader => { setHeader(resetHeader); setRecommendations(null); setScreen(1) }} />
+          <DataScreen header={header} onCalculate={handleCalculate} onReset={resetHeader => { setHeader(resetHeader); setRecommendations(null); setAgentTrace([]); setScreen(1) }} />
         )}
         {screen === 2 && recommendations && (
           <RecommendationsScreen
             data={recommendations}
+            agentTrace={agentTrace}
             onSkuClick={handleSkuClick}
+            onHeaderChange={setHeader}
           />
         )}
-        {screen === 2 && !recommendations && <div className="page muted">Загрузка рекомендаций…</div>}
+        {screen === 2 && !recommendations && <div className="page muted">{loadError || 'Загрузка рекомендаций…'}</div>}
         {screen === 3 && (
-          <SkuScreen key={skuId} skuId={skuId} onBack={() => setScreen(2)} onSkuChange={setSkuId} />
+          <SkuScreen key={skuId} skuId={skuId} onBack={() => openScreen(2)} onSkuChange={setSkuId} onOrderChanged={handleOrderChanged} />
         )}
-        {screen === 4 && <ReviewScreen />}
+        {screen === 4 && <ReviewScreen onHeaderChange={setHeader} />}
         {screen === 5 && <ValidationScreen />}
       </main>
     </div>

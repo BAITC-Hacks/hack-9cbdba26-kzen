@@ -43,3 +43,6 @@ def get_narrate(container: ContainerDep) -> NarrateOrderLine | None:
     if container.narrator is None:
         return None
     return NarrateOrderLine(container.narrator, container.cache)
+
+
+NarrateDep = Annotated[NarrateOrderLine | None, Depends(get_narrate)]

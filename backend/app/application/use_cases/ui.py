@@ -394,6 +394,11 @@ def _what_if_lines(c: Container, draft: OrderDraft, what_if: dict[str, Any]) -> 
 
 # ---------- экран 03: объяснение SKU ----------
 
+def line_for(c: Container, sku_id: str) -> DraftLine:
+    """Строка текущей версии по идентификатору фронта: нужна ручке обоснования словами."""
+    return _require_draft(c).line(_parse_sku_id(sku_id))
+
+
 def explanation(c: Container, sku_id: str) -> dict[str, Any]:
     draft = _require_draft(c)
     code = _parse_sku_id(sku_id)
@@ -757,6 +762,12 @@ def export(c: Container, payload: dict[str, Any]) -> tuple[str, bytes, str]:
     return filename, content, fmt
 
 
+EXPORT_URGENCY = {"critical": "срочно", "high": "в этом цикле", "normal": "плановая",
+                  "none": "не требуется"}
+EXPORT_STATUS = {"order": "к заказу", "enough": "хватает", "needs_data": "нужны данные",
+                 "insufficient_history": "мало истории"}
+
+
 def _export_value(c: Container, draft: OrderDraft, x: DraftLine, key: str) -> Any:
     return {
         "version": f"v{draft.version}.r{draft.revision}",
@@ -765,8 +776,13 @@ def _export_value(c: Container, draft: OrderDraft, x: DraftLine, key: str) -> An
         "supplier": c.workspace.supplier(x.supplier).name,
         "code_1c": x.code, "supplier_article": x.article, "name": x.name,
         "purchase_unit": x.unit, "recommended_qty": x.recommended, "final_qty": x.quantity,
+        "urgency": EXPORT_URGENCY.get(x.urgency, x.urgency),
+        "status": EXPORT_STATUS.get(row_status(x), row_status(x)),
         "manual": "да" if x.adjusted else "", "reason": x.adjustment_reason,
+        # Обоснование строкой — то же, что менеджер видел в таблице и карточке
+        "explanation": x.explanation,
         "price": "", "cost": "",  # цен в данных нет — пусто, а не ноль
+        "approved_by": draft.approved_by or "",
     }[key]
 
 

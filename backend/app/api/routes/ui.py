@@ -12,7 +12,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Query, Response
 
-from app.api.deps import ContainerDep
+from app.api.deps import ContainerDep, NarrateDep
 from app.api.schemas.common import ErrorResponse
 from app.application.use_cases import ui
 
@@ -72,6 +72,18 @@ def recommendations(container: ContainerDep, payload: Payload = Body(default={})
 @router.get("/skus/{sku_id}/explanation", responses=RESPONSES, summary="Объяснение позиции")
 def sku_explanation(sku_id: str, container: ContainerDep) -> Payload:
     return ui.explanation(container, sku_id)
+
+
+@router.get("/skus/{sku_id}/narrative", responses=RESPONSES,
+            summary="Обоснование позиции словами (LLM или шаблон)")
+async def sku_narrative(sku_id: str, container: ContainerDep, narrate: NarrateDep) -> Payload:
+    # Единственная async-ручка: внутри ожидание сети, а не расчёт на CPU.
+    # Сам вызов LLM уходит в поток, поэтому event loop не блокируется.
+    line = ui.line_for(container, sku_id)
+    if narrate is None:
+        return {"text": line.explanation, "source": "none"}
+    text, source = await narrate.execute(line)
+    return {"text": text, "source": source}
 
 
 @router.post("/skus/{sku_id}/actions", responses=RESPONSES, summary="Действие по позиции")

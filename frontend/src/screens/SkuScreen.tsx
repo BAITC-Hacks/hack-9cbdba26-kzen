@@ -1,29 +1,75 @@
-import { useEffect, useState } from 'react'
-import type { SkuExplanation, SkuId } from '../types'
-import { getSkuExplanation, skuAction } from '../api/client'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { AgentTraceEvent, AppHeader, SkuExplanation, SkuId } from '../types'
+import { getSkuExplanation, getSkuNarrative, skuAction } from '../api/client'
 
-interface Props { skuId: SkuId | null; onBack: () => void; onSkuChange: (id: SkuId) => void }
+interface Props { skuId: SkuId | null; onBack: () => void; onSkuChange: (id: SkuId) => void; onOrderChanged?: (header: AppHeader) => void }
 
-export default function SkuScreen({ skuId, onBack, onSkuChange }: Props) {
+const traceTone: Record<AgentTraceEvent['status'], { background: string; color: string }> = {
+  ok: { background: '#e8f5ed', color: '#17663a' },
+  warning: { background: '#fff3d6', color: '#825900' },
+  blocked: { background: '#ffebeb', color: '#a02e2e' },
+  waiting: { background: 'var(--color-neutral-200)', color: 'var(--color-neutral-700)' },
+}
+
+const traceIcon: Record<string, string> = {
+  decision: '◆', tool_call: '⚙', observation: '◎', flag: '⚑', awaiting_approval: '◷',
+}
+
+function factText(value: unknown): string {
+  if (value == null) return '—'
+  return typeof value === 'string' ? value : JSON.stringify(value)
+}
+
+export default function SkuScreen({ skuId, onBack, onSkuChange, onOrderChanged }: Props) {
   const [data, setData] = useState<SkuExplanation | null>(null)
+  const [narrative, setNarrative] = useState<{ text: string; source: string } | null>(null)
+  const [narrativeLoading, setNarrativeLoading] = useState(false)
+  const narrativeRequest = useRef(0)
   const [qty, setQty] = useState('')
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  const loadNarrative = useCallback(async (id: SkuId) => {
+    const request = ++narrativeRequest.current
+    setNarrative(null)
+    setNarrativeLoading(true)
+    try {
+      const result = await getSkuNarrative(id)
+      if (request === narrativeRequest.current) setNarrative(result)
+    } catch {
+      // Карточка остаётся полезной и при временной недоступности отдельного обоснования.
+    } finally {
+      if (request === narrativeRequest.current) setNarrativeLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (!skuId) return
-    getSkuExplanation(skuId).then(setData).catch(cause => setError(String(cause)))
-  }, [skuId])
+    let active = true
+    const pendingNarrative = narrativeRequest
+    getSkuExplanation(skuId).then(card => {
+      if (!active) return
+      setData(card)
+      void loadNarrative(skuId)
+    }).catch(cause => { if (active) setError(String(cause)) })
+    return () => { active = false; pendingNarrative.current++ }
+  }, [skuId, loadNarrative])
 
   async function applyManual(action: 'set_manual_qty' | 'clear_manual_qty') {
     if (!skuId || !data) return
     setSaving(true)
     setError('')
     try {
-      const payload = action === 'set_manual_qty' ? { action, qty: Number(qty), reason: reason.trim(), order_version: data.header.order?.version } : { action, order_version: data.header.order?.version }
-      await skuAction(skuId, payload)
+      const orderVersion = data.header.order?.version
+      const orderRevision = data.header.order?.revision
+      const payload = action === 'set_manual_qty'
+        ? { action, qty: Number(qty), reason: reason.trim(), order_version: orderVersion, order_revision: orderRevision }
+        : { action, order_version: orderVersion, order_revision: orderRevision }
+      const result = await skuAction(skuId, payload)
+      onOrderChanged?.(result.header)
       setData(await getSkuExplanation(skuId))
+      void loadNarrative(skuId)
       setQty('')
       setReason('')
     } catch (cause) { setError(`Не удалось сохранить правку: ${String(cause)}`) }
@@ -141,7 +187,12 @@ export default function SkuScreen({ skuId, onBack, onSkuChange }: Props) {
           </div>
         </div>        <div>
           <h2 style={{ marginBottom: 12 }}>Расчёт рекомендации</h2>
-          <div className='notice' style={{ marginBottom: 16 }}>{data.explanation_text}</div>
+          <div className='notice' style={{ marginBottom: 16 }}>
+            {narrative?.text || data.explanation_text}
+            <div className="tiny" style={{ marginTop: 8 }}>
+              {narrativeLoading ? 'Формулирую обоснование…' : narrative?.source.startsWith('nvidia:') ? 'Сформулировано ИИ, числа из расчёта' : 'Шаблон'}
+            </div>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {data.steps.map(step => (
               <div key={step.key} style={{
@@ -159,6 +210,33 @@ export default function SkuScreen({ skuId, onBack, onSkuChange }: Props) {
               </div>
             ))}
           </div>
+
+          {!!data.agent_trace?.length && (
+            <section className="blueprint panel" style={{ marginTop: 20 }}>
+              <h3 className="card-title" style={{ marginBottom: 12 }}>Что проверил агент</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {data.agent_trace.map(event => (
+                  <div key={event.seq} style={{ padding: '10px 12px', border: '1px solid var(--color-divider)', borderRadius: 2 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span aria-hidden="true" style={{ ...traceTone[event.status], borderRadius: 2, minWidth: 24, textAlign: 'center' }}>{traceIcon[event.type] || '•'}</span>
+                      <strong style={{ fontSize: 13 }}>{event.title}</strong>
+                    </div>
+                    {event.tool && <div className="tiny muted" style={{ marginTop: 4, marginLeft: 32 }}>{event.tool}</div>}
+                    {Object.keys(event.facts || {}).length > 0 && (
+                      <details style={{ marginTop: 8, marginLeft: 32 }}>
+                        <summary className="tiny" style={{ cursor: 'pointer' }}>Факты расчёта</summary>
+                        <table className="table" style={{ fontSize: 11, marginTop: 6 }}>
+                          <tbody>{Object.entries(event.facts).map(([key, value]) => (
+                            <tr key={key}><th scope="row">{key}</th><td>{factText(value)}</td></tr>
+                          ))}</tbody>
+                        </table>
+                      </details>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           <div className="blueprint panel" style={{ marginTop: 24 }}>
             <h3 className="card-title" style={{ marginBottom: 12 }}>Ручная корректировка</h3>

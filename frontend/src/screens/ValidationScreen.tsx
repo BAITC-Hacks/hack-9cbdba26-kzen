@@ -1,72 +1,30 @@
 import { useEffect, useState } from 'react'
-import type { ValidationScenarios } from '../types'
-import { getValidation } from '../api/client'
+import type { DataOverview, ValidationScenarios } from '../types'
+import { getDataOverview, getValidation } from '../api/client'
 
 export default function ValidationScreen() {
   const [data, setData] = useState<ValidationScenarios | null>(null)
-  useEffect(() => { getValidation().then(setData) }, [])
-  if (!data) return <div style={{ padding: 24 }}>Загрузка...</div>
+  const [overview, setOverview] = useState<DataOverview | null>(null)
+  const [error, setError] = useState('')
 
-  return (
-    <div style={{ padding: 24 }}>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ marginBottom: 4 }}>Проверка TZ</h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 18, fontFamily: 'var(--font-heading)', color: data.passed === data.total ? 'green' : '#c0392b' }}>
-            {data.summary_text}
-          </span>
-          <span className={data.passed === data.total ? 'tag tag-accent' : 'tag tag-outline'}>
-            {data.passed === data.total ? 'Все проверки пройдены' : 'Есть ошибки'}
-          </span>
-        </div>
-      </div>
+  useEffect(() => {
+    Promise.all([getValidation(), getDataOverview()])
+      .then(([checks, sources]) => { setData(checks); setOverview(sources) })
+      .catch(cause => setError(String(cause)))
+  }, [])
 
-      <div style={{ background: 'white', borderRadius: 2, overflow: 'hidden', boxShadow: 'var(--shadow-sm)', marginBottom: 24 }}>
-        <table className='table'>
-          <thead><tr>
-            <th style={{ width: 40 }}>№</th>
-            <th>Сценарий</th>
-            <th>Ожидаемое поведение</th>
-            <th>Фактический результат</th>
-            <th>Итог</th>
-          </tr></thead>
-          <tbody>
-            {data.items.map(item => (
-              <tr key={item.n}>
-                <td style={{ color: 'var(--color-neutral-500)' }}>{item.n}</td>
-                <td style={{ fontWeight: 500 }}>{item.name}</td>
-                <td style={{ fontSize: 12, color: 'var(--color-neutral-600)' }}>{item.expected_text}</td>
-                <td style={{ fontSize: 12 }}>{item.actual_text}</td>
-                <td>
-                  {item.passed
-                    ? <span className='tag tag-accent'>Пройден</span>
-                    : <span className='tag tag-outline' style={{ color: '#c0392b', borderColor: '#c0392b' }}>Ошибка</span>
-                  }
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+  return <div className="page">
+    <header className="page-head"><div><h1>Проверки по ТЗ</h1><p className="page-subtitle">Проверки рассчитываются на сервере по сценариям приёмки. Результат отражает текущую версию расчётного ядра.</p></div>{data && <span className={`tag ${data.passed === data.total ? 'tag-accent' : 'tag-outline'}`}>{data.summary_text}</span>}</header>
+    {error && <div className="notice" role="alert">Не удалось загрузить проверки: {error}</div>}
 
-      <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 18, marginBottom: 12 }}>Бэктест</h2>
-        <div className='notice' style={{ marginBottom: 12 }}>
-          Бэктест сравнивает рекомендации алгоритма с фактическими закупками за исторический период.
-        </div>
-        <div style={{ background: 'white', borderRadius: 2, overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
-          <table className='table'>
-            <thead><tr>
-              <th>Период</th><th>SKU</th><th>Рекоменд.</th><th>Факт</th><th>Отклонение</th>
-            </tr></thead>
-            <tbody>
-              <tr><td>Сент. 2026</td><td>ЦБ-004121</td><td>84</td><td>72</td><td style={{ color: '#c0392b' }}>+17%</td></tr>
-              <tr><td>Сент. 2026</td><td>ЦБ-004125</td><td>60</td><td>60</td><td style={{ color: 'green' }}>0%</td></tr>
-              <tr><td>Авг. 2026</td><td>КМ-1260</td><td>20</td><td>25</td><td style={{ color: '#c0392b' }}>-20%</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  )
+    <section>
+      <div className="inline-actions" style={{ marginBottom: 10 }}><h2>Проверки по ТЗ</h2>{data && <span className="tag tag-neutral">{data.passed} / {data.total}</span>}</div>
+      <div className="scroll-table"><table className="table" style={{ minWidth: 740 }}><thead><tr><th style={{ width: 50 }}>№</th><th>Сценарий</th><th>Ожидаемое поведение</th><th>Фактический результат</th><th>Итог</th></tr></thead><tbody>{data?.items.map(item => <tr key={item.n}><td className="muted">{item.n}</td><td style={{ fontWeight: 500 }}>{item.name}</td><td className="tiny">{item.expected_text || '—'}</td><td>{item.actual_text}</td><td><span className={`tag ${item.passed ? 'tag-accent' : 'tag-outline'}`}>{item.passed ? 'Пройден' : 'Ошибка'}</span></td></tr>)}</tbody></table></div>
+      {!data && !error && <p className="muted" style={{ marginTop: 12 }}>Загрузка проверок…</p>}
+    </section>
+
+    <section className="page-section blueprint panel"><h2 className="card-title">Хронологический backtest</h2><p className="page-subtitle">Скользящее окно сравнивает прогнозы с регулярным спросом последующих месяцев. Метрики WAPE, MAE и bias появятся после подключения результатов бэктеста к API.</p></section>
+
+    <section className="page-section"><h2 className="section-heading">Участие источников в расчёте</h2><div className="scroll-table"><table className="table"><thead><tr><th>Источник</th><th>Поставщик</th><th>Применение</th><th>Файл</th></tr></thead><tbody>{overview?.sources.map(source => <tr key={source.key}><td>{source.type_text}</td><td>{source.supplier.id === 'SE' ? 'Systeme Electric' : 'ИЭК'}</td><td>{source.usage_text || 'Роль источника не указана'}</td><td className="tiny">{source.file?.name || '—'}</td></tr>)}{overview && overview.sources.length === 0 && <tr><td colSpan={4} className="muted">Источники в текущем окружении не найдены.</td></tr>}</tbody></table></div></section>
+  </div>
 }

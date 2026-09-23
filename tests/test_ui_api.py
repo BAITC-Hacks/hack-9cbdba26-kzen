@@ -136,3 +136,12 @@ def test_current_route_is_not_taken_by_sku_card(ui):
     """/orders/{code} зарегистрирован раньше в каркасе — не должен перехватывать current."""
     ui.post(f"{B}/recommendations/search", json={})
     assert "version" in ui.get(f"{B}/orders/current").json()
+
+
+def test_reason_short_is_formula_not_full_text(ui):
+    rows = [r for g in ui.post(f"{B}/recommendations/search", json={}).json()["groups"]
+            for r in g["rows"] if r["status"] == "order"]
+    assert rows
+    # Подписи обоснования должны совпадать с _build_reasons, иначе тут будет полный текст
+    assert all("потребность" in r["reason_short"] for r in rows)
+    assert "свободно" in rows[0]["reason_short"] and "путь" in rows[0]["reason_short"]

@@ -231,11 +231,14 @@ def _reason_short(line: DraftLine) -> str:
     if not _computed(line):
         return line.issues[0] if line.issues else "Недостаточно данных для расчёта"
     parts = dict(line.reasons)
-    need = parts.get("Потребность на период")
-    avail = parts.get("Свободный остаток и товар в пути")
-    if need is None or avail is None:
+    # Подписи — контракт с _build_reasons в replenishment.py: переименуют там —
+    # формула тихо откатится на полное обоснование, поэтому её держит тест
+    labels = ("Потребность на период", "Свободный остаток", "Товар в пути")
+    if any(label not in parts for label in labels):
         return line.explanation
-    text = f"потребность {need} − доступно {avail} → {line.recommended}"
+    # Значения приходят как «120 шт»; единица есть в соседней колонке, в формуле она шум
+    need, free, transit = (parts[label].split()[0] for label in labels)
+    text = f"потребность {need} − свободно {free} − путь {transit} → {line.recommended}"
     if line.moq > 1 and line.recommended:
         text += f" (крат. {line.moq})"
     return text

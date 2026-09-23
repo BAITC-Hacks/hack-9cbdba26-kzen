@@ -432,7 +432,7 @@ def explanation(c: Container, sku_id: str) -> dict[str, Any]:
             m = _add_months(sku.history[-1].month, i)
             forecast.append({"month": m.strftime("%Y-%m"),
                              "label": f"П·{MONTH_LABELS[m.month - 1].lower()}",
-                             "qty": round(forecaster.forecast(cleaned_sku, m.month).monthly_demand)})
+                             "qty": round(forecaster.forecast(cleaned_sku, m.month).monthly_demand, 2)})
 
     origin = "synthetic" if c.data_mode == "demo" else "real"
     iek_monthly_stock = c.data_mode != "demo" and supplier_id(sku.supplier) == "IEK"
@@ -492,8 +492,8 @@ def explanation(c: Container, sku_id: str) -> dict[str, Any]:
         "stockout_candidates": [],
         "stockout_month_options": [],
         "demand": {
-            "raw_avg": round(statistics.fmean(p.sold for p in last), 1) if last else None,
-            "regular_avg": round(fc.base_demand, 1),
+            "raw_avg": round(statistics.fmean(p.sold for p in last), 2) if last else None,
+            "regular_avg": round(fc.base_demand, 2),
             "daily": round(line.monthly_demand / 30, 2),
             "season": round(fc.seasonality_factor, 2), "season_source_text": "по истории артикула",
             "trend": round(fc.growth_factor - 1, 3), "trend_source_text": "по истории артикула",

@@ -194,6 +194,33 @@ def test_card_forecast_requires_sales_history(settings):
     ]
 
 
+def test_card_shows_small_nonzero_demand_without_changing_order(settings):
+    from dataclasses import replace
+
+    repo = build_demo_repository()
+    sku = repo.get("200400050_")
+    repo.add(replace(
+        sku, free_stock=0,
+        history=tuple(replace(point, sold=0.25) for point in sku.history),
+    ))
+    container = Container(
+        settings=settings, repo=repo, cache=MemoryCache(),
+        forecasters={"baseline": BaselineForecaster(), "smoothed": SmoothedForecaster()},
+    )
+    with TestClient(create_app(settings, container=container)) as client:
+        assert client.post(f"{B}/calculations", json={}).status_code == 200
+        card = client.get(f"{B}/skus/IEK:200400050_/explanation").json()
+
+    assert card["demand"]["raw_avg"] == 0.25
+    assert card["demand"]["regular_avg"] == 0.25
+    assert [point["qty"] for point in card["chart"]["forecast"]] == [0.25] * 3
+    assert any("(0.25 шт/мес)" in issue["text"] for issue in card["issues"])
+    steps = {step["label"]: step["value_text"] for step in card["steps"]}
+    assert steps["Средние продажи"] == "0.25 шт/мес"
+    assert steps["Потребность на период"] != "0 шт"
+    assert steps["Рекомендуемый заказ"] == "10 шт"
+
+
 def test_calculation_toast_matches_table_summary(ui):
     toast = ui.post(f"{B}/calculations", json={}).json()["toast"]
     summary = ui.post(f"{B}/recommendations/search", json={}).json()["summary"]

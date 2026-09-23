@@ -226,8 +226,10 @@ def _build_reasons(
     менеджер может проверить любую цифру вручную и получить то же самое.
     """
     unit = sku.unit
+    base_demand_text = f"{forecast.base_demand:.2f}".rstrip("0").rstrip(".")
+    need_text = f"{need:.2f}".rstrip("0").rstrip(".")
     reasons = [
-        ReasonPart("Средние продажи", f"{forecast.base_demand:.1f} {unit}/мес"),
+        ReasonPart("Средние продажи", f"{base_demand_text} {unit}/мес"),
     ]
 
     if abs(forecast.growth_factor - 1) > 0.05:
@@ -273,7 +275,7 @@ def _build_reasons(
 
     reasons += [
         ReasonPart("Срок поставки", f"{sku.lead_time_days or params.lead_time_days} дн"),
-        ReasonPart("Потребность на период", f"{need:.0f} {unit}"),
+        ReasonPart("Потребность на период", f"{need_text} {unit}"),
         ReasonPart("Свободный остаток", f"{sku.free_stock:.0f} {unit}"),
         ReasonPart("Учтено в пути", f"{counted_inbound:.0f} {unit}"),
     ]

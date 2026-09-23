@@ -96,10 +96,11 @@ def assess(sku: Sku, line: OrderLine, cleaned: CleanedDemand) -> Assessment:
         ))
 
     if line.monthly_demand > 0 and line.quantity > line.monthly_demand * LARGE_ORDER_MONTHS:
+        demand_text = f"{line.monthly_demand:.2f}".rstrip("0").rstrip(".")
         issues.append(Issue(
             "large_order",
             f"Заказ {line.quantity} шт — больше {LARGE_ORDER_MONTHS:.0f} мес спроса "
-            f"({line.monthly_demand:.0f} шт/мес)",
+            f"({demand_text} шт/мес)",
             blocking=False,
         ))
 

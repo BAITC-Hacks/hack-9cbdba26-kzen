@@ -1,0 +1,9 @@
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+ml/artifacts/*.joblib
+data/*.parquet
+notebooks/.ipynb_checkpoints

@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.local
+*.key
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+ml/artifacts/*.joblib
+ml/artifacts/*.json
+data/*.parquet
+data/*.csv
+catboost_info/
+
+# данные партнёра: коммерческая информация, в git не кладём
+data/IEK/
+data/Systeme electric/

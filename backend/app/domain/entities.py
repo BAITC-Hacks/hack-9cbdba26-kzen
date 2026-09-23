@@ -31,11 +31,30 @@ class MonthPoint:
     month: date
     sold: float
     stock_start: float = 0.0
+    stock_known: bool = True
 
     @property
     def stockout(self) -> bool:
         """Месяц без товара: продавать было нечего, спрос не виден в продажах."""
-        return self.stock_start <= 0
+        return self.stock_known and self.stock_start <= 0
+
+
+@dataclass(frozen=True, slots=True)
+class BulkOrderEvent:
+    """Разовая крупная отгрузка, подтверждённая транзакциями.
+
+    ID клиента в выгрузках нет, поэтому номер накладной — проверяемый proxy
+    клиентского заказа. regular_quantity — типичный размер накладной по позиции.
+    """
+
+    month: date
+    invoice: str
+    quantity: float
+    regular_quantity: float
+
+    @property
+    def excess(self) -> float:
+        return max(0.0, self.quantity - self.regular_quantity)
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +66,10 @@ class Sku:
     supplier: str
     article: str = ""             # артикул поставщика
     category: str = ""
+    unit: str = "шт"
     moq: int = 1                  # кратность отгрузки; 0 в данных трактуем как 1
+    on_hand_stock: float | None = None
+    reserved_stock: float = 0.0
     free_stock: float = 0.0       # остаток минус зарезервировано
     in_transit: float = 0.0       # товар в пути по открытым заказам
     # Справочника сроков поставки партнёр не дал, поэтому по умолчанию None:
@@ -55,6 +77,7 @@ class Sku:
     # значение на артикуле переопределит общий параметр.
     lead_time_days: int | None = None
     history: tuple[MonthPoint, ...] = ()
+    bulk_orders: tuple[BulkOrderEvent, ...] = ()
 
     @property
     def months_of_history(self) -> int:

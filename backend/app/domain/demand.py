@@ -14,7 +14,7 @@ import statistics
 from dataclasses import dataclass
 from datetime import date
 
-from app.domain.entities import MonthPoint
+from app.domain.entities import BulkOrderEvent, MonthPoint
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +28,7 @@ class CleanedDemand:
     points: tuple[MonthPoint, ...]
     removed_bulk: float = 0.0           # сколько штук вычтено как разовые заказы
     bulk_months: tuple[date, ...] = ()  # в каких месяцах нашли аномалию
+    bulk_invoices: tuple[str, ...] = () # накладные, подтвердившие клиентский сценарий
     compensated: float = 0.0            # сколько штук добавлено за месяцы без товара
     stockout_months: int = 0
 
@@ -68,11 +69,57 @@ def remove_bulk_orders(
         if p.sold > expected * factor:
             removed += p.sold - expected
             months.append(p.month)
-            cleaned.append(MonthPoint(month=p.month, sold=expected, stock_start=p.stock_start))
+            cleaned.append(
+                MonthPoint(
+                    month=p.month,
+                    sold=expected,
+                    stock_start=p.stock_start,
+                    stock_known=p.stock_known,
+                )
+            )
         else:
             cleaned.append(p)
 
     return tuple(cleaned), removed, months
+
+
+def remove_confirmed_bulk_orders(
+    points: tuple[MonthPoint, ...], events: tuple[BulkOrderEvent, ...]
+) -> tuple[tuple[MonthPoint, ...], float, list[date], list[str]]:
+    """Вычесть избыток крупных накладных из соответствующего месяца.
+
+    Транзакции покрывают не всю историю, поэтому они только подтверждают
+    конкретные выбросы, но не заменяют помесячный источник спроса.
+    """
+    if not events:
+        return points, 0.0, [], []
+
+    excess_by_month: dict[date, float] = {}
+    invoices_by_month: dict[date, list[str]] = {}
+    for event in events:
+        excess_by_month[event.month] = excess_by_month.get(event.month, 0.0) + event.excess
+        invoices_by_month.setdefault(event.month, []).append(event.invoice)
+
+    cleaned: list[MonthPoint] = []
+    removed = 0.0
+    months: list[date] = []
+    invoices: list[str] = []
+    for point in points:
+        requested = excess_by_month.get(point.month, 0.0)
+        deducted = min(max(0.0, point.sold), requested)
+        if deducted > 0:
+            removed += deducted
+            months.append(point.month)
+            invoices.extend(invoices_by_month[point.month])
+        cleaned.append(
+            MonthPoint(
+                month=point.month,
+                sold=max(0.0, point.sold - deducted),
+                stock_start=point.stock_start,
+                stock_known=point.stock_known,
+            )
+        )
+    return tuple(cleaned), removed, months, invoices
 
 
 def _expected_level(
@@ -123,7 +170,14 @@ def compensate_stockouts(
         if p.stockout and p.sold < normal:
             added += normal - p.sold
             count += 1
-            cleaned.append(MonthPoint(month=p.month, sold=normal, stock_start=p.stock_start))
+            cleaned.append(
+                MonthPoint(
+                    month=p.month,
+                    sold=normal,
+                    stock_start=p.stock_start,
+                    stock_known=p.stock_known,
+                )
+            )
         else:
             cleaned.append(p)
 
@@ -171,18 +225,24 @@ def growth_factor(points: tuple[MonthPoint, ...], *, window: int = 6) -> float:
     return max(0.5, min(recent / previous, 2.0))
 
 
-def prepare(points: tuple[MonthPoint, ...]) -> CleanedDemand:
+def prepare(
+    points: tuple[MonthPoint, ...], bulk_orders: tuple[BulkOrderEvent, ...] = ()
+) -> CleanedDemand:
     """Полная подготовка истории: сначала выбросы, потом провалы наличия.
 
     Порядок важен: если сначала компенсировать stockout, разовый заказ
     завысит «нормальный» уровень, по которому считается компенсация.
     """
-    stage1, removed, bulk_months = remove_bulk_orders(points)
+    stage0, confirmed_removed, confirmed_months, invoices = remove_confirmed_bulk_orders(
+        points, bulk_orders
+    )
+    stage1, statistical_removed, statistical_months = remove_bulk_orders(stage0)
     stage2, added, stockouts = compensate_stockouts(stage1)
     return CleanedDemand(
         points=stage2,
-        removed_bulk=removed,
-        bulk_months=tuple(bulk_months),
+        removed_bulk=confirmed_removed + statistical_removed,
+        bulk_months=tuple(dict.fromkeys([*confirmed_months, *statistical_months])),
+        bulk_invoices=tuple(dict.fromkeys(invoices)),
         compensated=added,
         stockout_months=stockouts,
     )

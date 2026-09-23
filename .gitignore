@@ -14,9 +14,8 @@ data/*.parquet
 data/*.csv
 catboost_info/
 
-# данные партнёра: коммерческая информация, в git не кладём
-data/IEK/
-data/Systeme electric/
+# Данные партнёра и будущие выгрузки: коммерческая информация, в git не кладём
+data/
 
 # Личные сообщения для передачи задач; общий чеклист docs/CHECKLIST.md — в репозитории
 docs/HANDOFF_*.md

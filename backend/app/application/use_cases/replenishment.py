@@ -15,7 +15,8 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 
 from app.domain.demand import prepare
@@ -29,6 +30,7 @@ from app.domain.entities import (
     urgency_for,
 )
 from app.domain.ports import ForecasterPort, SkuRepositoryPort
+from app.domain.exceptions import DomainValidationError
 
 MONTH_DAYS = 30.0
 
@@ -45,6 +47,14 @@ class CalcParams:
     coverage_months: float = 1.0   # целевой запас сверх срока поставки
     safety_factor: float = 0.2     # страховой запас, доля от потребности
     today: date | None = None
+
+    def __post_init__(self) -> None:
+        if self.lead_time_days <= 0:
+            raise DomainValidationError("Срок поставки должен быть положительным")
+        if not 0 <= self.coverage_months <= 12:
+            raise DomainValidationError("Целевой запас должен быть от 0 до 12 месяцев")
+        if not 0 <= self.safety_factor <= 1:
+            raise DomainValidationError("Страховой коэффициент должен быть от 0 до 1")
 
     @property
     def lead_time_months(self) -> float:
@@ -67,61 +77,75 @@ class CalculateOrders:
         only_needed: bool = True,
     ) -> list[SupplierOrder]:
         params = params or CalcParams()
-        lines = [
-            self.calculate_line(sku, params)
-            for sku in self._repo.list_skus(supplier=supplier, category=category)
-        ]
-        if only_needed:
-            lines = [line for line in lines if line.needed]
-
-        grouped: dict[str, list[OrderLine]] = {}
-        for line in lines:
-            grouped.setdefault(line.sku.supplier, []).append(line)
-
-        orders = []
-        for name, items in grouped.items():
-            # Сначала критичные: менеджер смотрит список сверху вниз
-            items.sort(key=lambda x: (_urgency_rank(x.urgency), -x.quantity))
-            orders.append(SupplierOrder(supplier=name, lines=items))
-
-        orders.sort(key=lambda o: -o.critical_positions)
-        return orders
+        skus = self._repo.list_skus(supplier=supplier, category=category)
+        return calculate_recommendations(
+            skus, self._forecaster, params, only_needed=only_needed
+        )
 
     def calculate_line(self, sku: Sku, params: CalcParams) -> OrderLine:
-        today = params.today or date.today()
-        arrival = today + timedelta(days=sku.lead_time_days or params.lead_time_days)
+        return calculate_order_line(sku, params, self._forecaster)
 
-        cleaned = prepare(sku.history)
-        # Прогноз строится по очищенной истории: это и есть вклад Must have 3 и 4
-        forecast = self._forecaster.forecast(
-            Sku(
-                code=sku.code, name=sku.name, supplier=sku.supplier, article=sku.article,
-                category=sku.category, moq=sku.moq, free_stock=sku.free_stock,
-                in_transit=sku.in_transit, lead_time_days=sku.lead_time_days,
-                history=cleaned.points,
-            ),
-            arrival.month,
-        )
 
-        lead_months = (sku.lead_time_days or params.lead_time_days) / MONTH_DAYS
-        horizon = lead_months + params.coverage_months
-        need = forecast.monthly_demand * horizon * (1 + params.safety_factor)
-        available = sku.free_stock + sku.in_transit
-        raw_qty = need - available
+def calculate_order_line(
+    sku: Sku, params: CalcParams, forecaster: ForecasterPort
+) -> OrderLine:
+    """Рассчитать одну нормализованную позицию без HTTP и репозитория."""
+    today = params.today or date.today()
+    arrival = today + timedelta(days=sku.lead_time_days or params.lead_time_days)
 
-        quantity = _round_to_moq(raw_qty, sku.moq)
-        coverage = available / forecast.monthly_demand if forecast.monthly_demand > 0 else 999.0
-        urgency = urgency_for(coverage, lead_months) if quantity > 0 else Urgency.NONE
+    cleaned = prepare(sku.history, sku.bulk_orders)
+    # Прогноз строится по очищенной истории: это и есть вклад Must have 3 и 4
+    forecast = forecaster.forecast(
+        replace(sku, history=cleaned.points),
+        arrival.month,
+    )
 
-        return OrderLine(
-            sku=sku,
-            quantity=quantity,
-            urgency=urgency,
-            monthly_demand=round(forecast.monthly_demand, 2),
-            coverage_months=round(min(coverage, 999.0), 2),
-            reasons=_build_reasons(sku, cleaned, forecast, params, need, available, quantity),
-            method=forecast.method,
-        )
+    lead_months = (sku.lead_time_days or params.lead_time_days) / MONTH_DAYS
+    horizon = lead_months + params.coverage_months
+    need = forecast.monthly_demand * horizon * (1 + params.safety_factor)
+    available = sku.free_stock + sku.in_transit
+    raw_qty = need - available
+
+    quantity = _round_to_moq(raw_qty, sku.moq)
+    coverage = (
+        sku.free_stock / forecast.monthly_demand if forecast.monthly_demand > 0 else 999.0
+    )
+    urgency = urgency_for(coverage, lead_months) if quantity > 0 else Urgency.NONE
+
+    return OrderLine(
+        sku=sku,
+        quantity=quantity,
+        urgency=urgency,
+        monthly_demand=round(forecast.monthly_demand, 2),
+        coverage_months=round(min(coverage, 999.0), 2),
+        reasons=_build_reasons(sku, cleaned, forecast, params, need, available, quantity),
+        method=forecast.method,
+    )
+
+
+def calculate_recommendations(
+    skus: Iterable[Sku],
+    forecaster: ForecasterPort,
+    params: CalcParams | None = None,
+    *,
+    only_needed: bool = True,
+) -> list[SupplierOrder]:
+    """Рассчитать рекомендации из нормализованных сущностей без HTTP и хранилища."""
+    params = params or CalcParams()
+    lines = [calculate_order_line(sku, params, forecaster) for sku in skus]
+    if only_needed:
+        lines = [line for line in lines if line.needed]
+
+    grouped: dict[str, list[OrderLine]] = {}
+    for line in lines:
+        grouped.setdefault(line.sku.supplier, []).append(line)
+
+    orders = []
+    for name, items in grouped.items():
+        items.sort(key=lambda item: (_urgency_rank(item.urgency), -item.quantity))
+        orders.append(SupplierOrder(supplier=name, lines=items))
+    orders.sort(key=lambda order: -order.critical_positions)
+    return orders
 
 
 def _round_to_moq(quantity: float, moq: int) -> int:
@@ -177,10 +201,16 @@ def _build_reasons(sku, cleaned, forecast: Forecast, params, need, available, qu
             )
         )
 
+    if sku.on_hand_stock is not None:
+        reasons.append(ReasonPart("Остаток на складе", f"{sku.on_hand_stock:.0f} шт"))
+    if sku.reserved_stock > 0:
+        reasons.append(ReasonPart("Зарезервировано", f"{sku.reserved_stock:.0f} шт"))
+
     reasons += [
         ReasonPart("Срок поставки", f"{sku.lead_time_days or params.lead_time_days} дн"),
         ReasonPart("Потребность на период", f"{need:.0f} шт"),
-        ReasonPart("Свободный остаток и товар в пути", f"{available:.0f} шт"),
+        ReasonPart("Свободный остаток", f"{sku.free_stock:.0f} шт"),
+        ReasonPart("Товар в пути", f"{sku.in_transit:.0f} шт"),
     ]
 
     if quantity and sku.moq > 1:

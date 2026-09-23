@@ -1,0 +1,138 @@
+"""Ручки под контракт фронта: сценарий закупщика целиком и три исправленных дыры."""
+
+from __future__ import annotations
+
+import csv
+import io
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.core.container import Container
+from app.infrastructure.cache.memory import MemoryCache
+from app.infrastructure.forecasting.baseline import BaselineForecaster
+from app.infrastructure.forecasting.smoothed import SmoothedForecaster
+from app.infrastructure.storage.demo_data import build_demo_repository
+from app.main import create_app
+
+B = "/api/v1"
+
+
+@pytest.fixture
+def ui(settings):
+    container = Container(
+        settings=settings, repo=build_demo_repository(), cache=MemoryCache(),
+        forecasters={"baseline": BaselineForecaster(), "smoothed": SmoothedForecaster()},
+    )
+    with TestClient(create_app(settings, container=container)) as client:
+        yield client
+
+
+def _approved(ui) -> int:
+    first = ui.post(f"{B}/recommendations/search", json={}).json()
+    sku_id = first["groups"][0]["rows"][0]["sku_id"]
+    v = ui.get(f"{B}/orders/current").json()["version"]
+    ui.post(f"{B}/skus/{sku_id}/actions",
+            json={"action": "set_manual_qty", "qty": 96, "reason": "проект", "order_version": v})
+    ui.post(f"{B}/orders/current/actions", json={"action": "submit", "order_version": v})
+    ui.put(f"{B}/session/role", json={"role": "head"})
+    assert ui.post(f"{B}/orders/current/actions",
+                   json={"action": "approve", "order_version": v}).status_code == 200
+    return v
+
+
+def test_full_purchasing_flow(ui):
+    v = _approved(ui)
+    order = ui.get(f"{B}/orders/current").json()
+    assert order["status"] == "approved"
+    assert order["permissions"]["can_export"] is True
+    assert order["sent_to_supplier"] is False
+    assert len(ui.get(f"{B}/orders/versions").json()) == 1
+    assert ui.post(f"{B}/orders/export", json={"version": v}).status_code == 200
+
+
+def test_roles_and_reason_are_enforced(ui):
+    ui.post(f"{B}/recommendations/search", json={})
+    v = ui.get(f"{B}/orders/current").json()["version"]
+    sku_id = ui.post(f"{B}/recommendations/search", json={}).json()["groups"][0]["rows"][0][
+        "sku_id"]
+
+    no_reason = ui.post(f"{B}/skus/{sku_id}/actions",
+                        json={"action": "set_manual_qty", "qty": 1, "reason": ""})
+    assert no_reason.json()["error"]["code"] == "REASON_REQUIRED"
+    assert no_reason.json()["error"]["field"] == "reason"
+
+    ui.post(f"{B}/orders/current/actions", json={"action": "submit", "order_version": v})
+    forbidden = ui.post(f"{B}/orders/current/actions",
+                        json={"action": "approve", "order_version": v})
+    assert forbidden.status_code == 403
+    assert forbidden.json()["error"]["code"] == "FORBIDDEN_ROLE"
+
+
+def test_needs_data_is_null_not_zero(ui):
+    rows = [r for g in ui.post(f"{B}/recommendations/search", json={}).json()["groups"]
+            for r in g["rows"]]
+    no_code = next(r for r in rows if r["code_1c"] == "ATN000330")
+    assert no_code["status"] == "needs_data"
+    assert no_code["final_qty"] is None
+    assert no_code["urgency"] == "unknown"
+
+
+def test_dead_settings_are_not_offered(ui):
+    """Настройка, которая не меняет расчёт, вводит менеджера в заблуждение."""
+    settings = ui.get(f"{B}/data/overview").json()["settings"]
+    assert "one_off_threshold_x_median" not in settings
+    assert "returns_rule" not in settings
+
+    response = ui.patch(f"{B}/settings", json={"returns_rule": "ignore"})
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "SETTING_NOT_SUPPORTED"
+
+
+def test_lead_time_setting_changes_order(ui):
+    def total():
+        ui.post(f"{B}/calculations", json={})
+        return sum(r["final_qty"] or 0 for g in ui.post(f"{B}/recommendations/search",
+                                                         json={}).json()["groups"]
+                   for r in g["rows"])
+
+    before = total()
+    ui.patch(f"{B}/settings", json={"suppliers": [{"id": "SE", "lead_time_days": 90}]})
+    assert total() > before
+
+
+def test_export_respects_columns_separator_encoding(ui):
+    v = _approved(ui)
+    response = ui.post(f"{B}/orders/export", json={
+        "version": v, "format": "csv", "separator": "tab", "encoding": "cp1251",
+        "columns": ["code_1c", "final_qty", "reason"],
+    })
+    assert response.status_code == 200
+    rows = list(csv.reader(io.StringIO(response.content.decode("cp1251")), delimiter="\t"))
+    assert rows[0] == ["Код 1С", "Итог", "Причина"]
+    assert any(r[1] == "96" and r[2] == "проект" for r in rows[1:])
+
+
+def test_export_before_approval_is_conflict(ui):
+    ui.post(f"{B}/recommendations/search", json={})
+    v = ui.get(f"{B}/orders/current").json()["version"]
+    response = ui.post(f"{B}/orders/export", json={"version": v})
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "ORDER_NOT_APPROVED"
+
+
+def test_reset_clears_versions_and_journal(ui):
+    _approved(ui)
+    assert ui.get(f"{B}/audit-log").json()["total"] > 0
+
+    ui.post(f"{B}/session/reset", json={"confirm": True})
+
+    assert ui.get(f"{B}/audit-log").json()["total"] == 0
+    assert ui.get(f"{B}/orders/versions").json() == []
+    assert ui.get(f"{B}/session").json()["order"] is None
+
+
+def test_current_route_is_not_taken_by_sku_card(ui):
+    """/orders/{code} зарегистрирован раньше в каркасе — не должен перехватывать current."""
+    ui.post(f"{B}/recommendations/search", json={})
+    assert "version" in ui.get(f"{B}/orders/current").json()

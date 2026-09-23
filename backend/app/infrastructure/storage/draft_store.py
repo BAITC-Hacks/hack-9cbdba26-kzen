@@ -47,6 +47,12 @@ class MemoryDraftStore:
     def list(self) -> list[OrderDraft]:
         return sorted(self._drafts.values(), key=lambda d: d.version, reverse=True)
 
+    def clear(self) -> None:
+        """Нумерация версий тоже с начала: после сброса это новая сессия."""
+        with self._lock:
+            self._drafts.clear()
+            self._next_version = 1
+
     def update(self, version: int, change: Callable[[OrderDraft], OrderDraft]) -> OrderDraft:
         with self._lock:
             updated = change(self.get(version))

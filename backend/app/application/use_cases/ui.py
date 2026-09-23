@@ -16,7 +16,6 @@ from datetime import UTC, date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from app.application.use_cases.agent import RunProcurementAgent
-from app.application.use_cases.drafts import ExportDraft
 from app.application.use_cases.replenishment import CalcParams, CalculateOrders
 from app.application.use_cases.selfcheck import RunSelfChecks
 from app.application.use_cases.workspace import EXPORT_COLUMNS, supplier_id
@@ -46,6 +45,10 @@ METHOD = "smoothed"
 ROLE_NAMES = {"manager": "Менеджер закупа", "head": "Руководитель закупок"}
 MONTH_LABELS = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"]
 STATUS_TEXT = {"draft": "черновик", "submitted": "на согласовании", "approved": "утверждена"}
+# Значение из контракта фронта → то, что реально пишется в файл
+SEPARATORS = {";": ";", ",": ",", "tab": "\t"}
+# utf-8-bom — чтобы Excel сам узнал кодировку; cp1251 — для старых загрузок в 1С
+ENCODINGS = {"utf-8-bom": "utf-8-sig", "cp1251": "cp1251"}
 
 
 # ---------- общие помощники ----------
@@ -141,8 +144,10 @@ def set_role(c: Container, role: str) -> dict[str, Any]:
 
 
 def reset_session(c: Container) -> dict[str, Any]:
+    """Сбрасываются версии, ручные правки и журнал: журнал живёт в версиях."""
+    c.drafts.clear()
     c.workspace.reset()
-    return {"header": header(c), "toast": "Сессия сброшена"}
+    return {"header": header(c), "toast": "Сессия сброшена: версии, правки и журнал удалены"}
 
 
 # ---------- расчёт ----------
@@ -597,11 +602,12 @@ def order_current(c: Container) -> dict[str, Any]:
         "groups": groups,
         "sent_to_supplier": False,
         "export_settings": {
-            "format": ws.export_format, "separator": ";", "encoding": "utf-8-bom",
+            "format": ws.export_format, "separator": ws.export_separator,
+            "encoding": ws.export_encoding,
             "columns": [{"key": k, "label": label, "enabled": ws.export_columns.get(k, True)}
                         for k, label in EXPORT_COLUMNS],
-            "format_options": ["xlsx", "csv"], "separator_options": [";"],
-            "encoding_options": ["utf-8-bom"],
+            "format_options": ["xlsx", "csv"], "separator_options": list(SEPARATORS),
+            "encoding_options": list(ENCODINGS),
             "note_text": "Точный состав полей нужно сверить с образцом файла импорта 1С.",
         },
     }
@@ -648,6 +654,10 @@ def update_export_settings(c: Container, payload: dict[str, Any]) -> dict[str, A
     with ws.lock:
         if payload.get("format") in ("xlsx", "csv"):
             ws.export_format = payload["format"]
+        if payload.get("separator") in SEPARATORS:
+            ws.export_separator = payload["separator"]
+        if payload.get("encoding") in ENCODINGS:
+            ws.export_encoding = payload["encoding"]
         for col in payload.get("columns") or []:
             if col.get("key") in ws.export_columns:
                 ws.export_columns[col["key"]] = bool(col.get("enabled"))
@@ -655,13 +665,63 @@ def update_export_settings(c: Container, payload: dict[str, Any]) -> dict[str, A
 
 
 def export(c: Container, payload: dict[str, Any]) -> tuple[str, bytes, str]:
-    version = payload.get("version") or c.workspace.current_version
-    fmt = payload.get("format") or c.workspace.export_format
+    """Файл утверждённого заказа с колонками, которые выбрал менеджер.
+
+    В файл идут только позиции, за которые кто-то отвечает (DraftLine.exportable):
+    «нужны данные» без ручного количества не выгружаются.
+    """
+    ws = c.workspace
+    version = payload.get("version") or ws.current_version
+    if version is None:
+        raise ConflictError("Расчёт ещё не запускался", code="NO_CALCULATION")
+    draft = c.drafts.get(version)
+    if not draft.approved:
+        raise ConflictError("Выгрузить можно только утверждённый заказ",
+                            code="ORDER_NOT_APPROVED", details={"version": version})
+
+    fmt = payload.get("format") or ws.export_format
+    separator = payload.get("separator") or ws.export_separator
+    encoding = payload.get("encoding") or ws.export_encoding
+    if fmt not in ("xlsx", "csv") or separator not in SEPARATORS or encoding not in ENCODINGS:
+        raise DomainValidationError("Неподдерживаемый формат выгрузки", field="format")
+    labels = dict(EXPORT_COLUMNS)
+    keys = payload.get("columns") or [k for k, _ in EXPORT_COLUMNS if ws.export_columns.get(k)]
+    unknown = [k for k in keys if k not in labels]
+    if unknown:
+        raise DomainValidationError(f"Неизвестные колонки: {unknown}", field="columns")
+
     sid = payload.get("supplier_id")
-    supplier = next((name for name in c.repo.suppliers() if supplier_id(name) == sid), None)
-    _, content = ExportDraft(c.drafts).execute(version, supplier=supplier, fmt=fmt)
+    sheets: dict[str, list[list[Any]]] = {}
+    for name, lines in sorted(draft.by_supplier().items()):
+        if sid and supplier_id(name) != sid:
+            continue
+        rows = [[_export_value(c, draft, x, k) for k in keys] for x in lines if x.exportable]
+        if rows:
+            sheets[c.workspace.supplier(name).name] = rows
+
+    from app.infrastructure.export.table import render_csv, render_xlsx
+
+    header_row = [labels[k] for k in keys]
+    if fmt == "xlsx":
+        content = render_xlsx(header_row, sheets)
+    else:
+        content = render_csv(header_row, [r for rows in sheets.values() for r in rows],
+                             separator=SEPARATORS[separator], encoding=ENCODINGS[encoding])
     filename = f"zakaz_almaty_{(sid or 'all').lower()}_v{version}.{fmt}"
     return filename, content, fmt
+
+
+def _export_value(c: Container, draft: OrderDraft, x: DraftLine, key: str) -> Any:
+    return {
+        "version": f"v{draft.version}.r{draft.revision}",
+        "approved_at": draft.approved_at.astimezone(ALMATY).strftime("%d.%m.%Y %H:%M")
+        if draft.approved_at else "",
+        "supplier": c.workspace.supplier(x.supplier).name,
+        "code_1c": x.code, "supplier_article": x.article, "name": x.name,
+        "purchase_unit": x.unit, "recommended_qty": x.recommended, "final_qty": x.quantity,
+        "manual": "да" if x.adjusted else "", "reason": x.adjustment_reason,
+        "price": "", "cost": "",  # цен в данных нет — пусто, а не ноль
+    }[key]
 
 
 def versions(c: Container) -> list[dict[str, Any]]:
@@ -735,9 +795,10 @@ def settings_view(c: Container) -> dict[str, Any]:
                        "review_days": s.review_days,
                        "horizon_days": s.lead_time_days + s.review_days}
                       for s in ws.suppliers.values()],
+        # Страховой запас по категориям, порог разовых сделок и правило возвратов
+        # пока зашиты в расчётном модуле. Отдавать их как настройки нельзя:
+        # менеджер поменяет значение, а заказ останется прежним.
         "categories": [],
-        "one_off_threshold_x_median": ws.one_off_threshold_x_median,
-        "returns_rule": ws.returns_rule,
         "excess_months": ws.excess_months,
     }
 
@@ -763,10 +824,12 @@ def patch_settings(c: Container, payload: dict[str, Any]) -> dict[str, Any]:
         if "calc_date" in payload:
             ws.calc_date = date.fromisoformat(payload["calc_date"]) if payload["calc_date"] \
                 else None
-        if "returns_rule" in payload and payload["returns_rule"] in ("net", "ignore"):
-            ws.returns_rule = payload["returns_rule"]
-        if "one_off_threshold_x_median" in payload:
-            ws.one_off_threshold_x_median = float(payload["one_off_threshold_x_median"])
+        fixed = {"returns_rule", "one_off_threshold_x_median", "categories"} & payload.keys()
+        if fixed:
+            raise DomainValidationError(
+                "Эта настройка пока не меняется: правило зашито в расчёте",
+                code="SETTING_NOT_SUPPORTED", field=sorted(fixed)[0],
+            )
         ws.calc_stale = ws.current_version is not None
     return {"header": header(c), "settings": settings_view(c),
             "toast": "Настройки сохранены — пересчитайте заказ"}
@@ -815,8 +878,10 @@ def data_overview(c: Container) -> dict[str, Any]:
         "issues": [],
         "document_rules": [
             {"doc_type": "Реализация", "rule_text": "Продажа, входит в спрос", "editable": False},
-            {"doc_type": "Возврат", "rule_text": None, "editable": True,
-             "setting": "returns_rule"},
+            {"doc_type": "Возврат",
+             "rule_text": "Отрицательный месячный итог — возврат, в спрос не входит; "
+                          "отрицательные транзакции не участвуют в поиске разовых сделок",
+             "editable": False},
         ],
         "settings": settings_view(c),
     }

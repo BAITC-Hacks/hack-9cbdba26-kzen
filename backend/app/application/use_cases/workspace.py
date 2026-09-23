@@ -59,9 +59,9 @@ class Workspace:
     suppliers: dict[str, SupplierSetting] = field(default_factory=default_suppliers)
     safety_factor: float = 0.2
     excess_months: float = 2.0
-    one_off_threshold_x_median: float = 3.0
-    returns_rule: str = "net"
     export_format: str = "xlsx"
+    export_separator: str = ";"
+    export_encoding: str = "utf-8-bom"
     export_columns: dict[str, bool] = field(
         default_factory=lambda: {key: True for key, _ in EXPORT_COLUMNS}
     )

@@ -58,6 +58,15 @@ class BulkOrderEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class Inbound:
+    """Партия в открытом заказе поставщику с ожидаемой датой прихода."""
+
+    quantity: float
+    eta: date | None
+    document: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class Sku:
     """Артикул со всем, что нужно для расчёта заказа."""
 
@@ -72,6 +81,7 @@ class Sku:
     reserved_stock: float = 0.0
     free_stock: float = 0.0       # остаток минус зарезервировано
     in_transit: float = 0.0       # товар в пути по открытым заказам
+    inbound: tuple[Inbound, ...] = ()
     # Справочника сроков поставки партнёр не дал, поэтому по умолчанию None:
     # срок берётся из параметров расчёта. Если справочник появится,
     # значение на артикуле переопределит общий параметр.

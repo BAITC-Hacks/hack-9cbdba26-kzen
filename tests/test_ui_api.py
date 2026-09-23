@@ -145,3 +145,31 @@ def test_reason_short_is_formula_not_full_text(ui):
     # Подписи обоснования должны совпадать с _build_reasons, иначе тут будет полный текст
     assert all("потребность" in r["reason_short"] for r in rows)
     assert "свободно" in rows[0]["reason_short"] and "путь" in rows[0]["reason_short"]
+
+
+def test_card_uses_invoice_bulk_like_calculation(settings):
+    """Карточка и расчёт чистят историю одинаково: разовая накладная видна с номером."""
+    from dataclasses import replace
+
+    from app.domain.entities import BulkOrderEvent
+
+    repo = build_demo_repository()
+    sku = repo.get("300200430_")
+    month = sku.history[-2].month
+    repo.add(replace(sku, bulk_orders=(
+        BulkOrderEvent(month=month, invoice="TEST-1", quantity=40.0, regular_quantity=5.0),)))
+    container = Container(
+        settings=settings, repo=repo, cache=MemoryCache(),
+        forecasters={"baseline": BaselineForecaster(), "smoothed": SmoothedForecaster()},
+    )
+    with TestClient(create_app(settings, container=container)) as client:
+        client.post(f"{B}/calculations", json={})
+        card = client.get(f"{B}/skus/SE:300200430_/explanation").json()
+    notes = " ".join(e["note_text"] for e in card["events"])
+    assert "TEST-1" in notes
+
+
+def test_calculation_toast_matches_table_summary(ui):
+    toast = ui.post(f"{B}/calculations", json={}).json()["toast"]
+    summary = ui.post(f"{B}/recommendations/search", json={}).json()["summary"]
+    assert f"{summary['order']} поз. к заказу" in toast

@@ -60,7 +60,12 @@ def _build_iek(root: Path) -> None:
     _save(
         folder / "Путь ИЭК.xlsx",
         [
-            ["Код 1с", "Артикул ИЭК", " Наименование", "Заказ 1"],
+            [
+                "Код 1с",
+                "Артикул ИЭК",
+                " Наименование",
+                "ПП УТ-7848 от 7 сентября 2026\xa0г. (поступление до 01.10.2026)",
+            ],
             ["IEK-1", "ART-I", "Кабель", 5],
         ],
     )
@@ -126,6 +131,10 @@ def test_both_supplier_formats_are_normalized(tmp_path: Path):
     assert iek.moq == 6
     assert iek.free_stock == 2
     assert iek.in_transit == 5
+    assert len(iek.inbound) == 1
+    assert iek.inbound[0].document == "УТ-7848"
+    assert iek.inbound[0].eta.isoformat() == "2026-10-01"
+    assert iek.inbound[0].quantity == 5
     assert iek.history[0].stockout
 
     assert systeme is not None
@@ -134,4 +143,5 @@ def test_both_supplier_formats_are_normalized(tmp_path: Path):
     assert systeme.reserved_stock == 3
     assert systeme.free_stock == 7
     assert systeme.in_transit == 4
+    assert systeme.inbound[0].eta is None
     assert loaded.report.metrics["normalized_skus"] == 2

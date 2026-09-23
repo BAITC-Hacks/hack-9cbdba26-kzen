@@ -22,6 +22,7 @@ from datetime import date, timedelta
 from app.domain.demand import prepare
 from app.domain.entities import (
     Forecast,
+    Inbound,
     OrderLine,
     ReasonPart,
     Sku,
@@ -117,7 +118,8 @@ def calculate_order_line(
     need_without_category = forecast.monthly_demand * horizon * (1 + params.safety_factor)
     need = forecast.monthly_demand * horizon * (1 + effective_safety)
     category_effect = need - need_without_category
-    available = sku.free_stock + sku.in_transit
+    counted_inbound, late_inbound = _split_inbound(sku, arrival)
+    available = sku.free_stock + counted_inbound
     raw_qty = need - available
 
     quantity = _round_to_moq(raw_qty, sku.moq)
@@ -143,6 +145,8 @@ def calculate_order_line(
             effective_safety,
             category_uplift,
             category_effect,
+            counted_inbound,
+            late_inbound,
         ),
         method=forecast.method,
     )
@@ -173,6 +177,18 @@ def calculate_recommendations(
     return orders
 
 
+def _split_inbound(sku: Sku, arrival: date) -> tuple[float, tuple[Inbound, ...]]:
+    """Разделить путь на успевающий к нашей поставке и опаздывающий."""
+    if not sku.inbound:
+        return max(0.0, sku.in_transit), ()
+
+    counted = sum(
+        item.quantity for item in sku.inbound if item.eta is None or item.eta <= arrival
+    )
+    late = tuple(item for item in sku.inbound if item.eta is not None and item.eta > arrival)
+    return counted, late
+
+
 def _round_to_moq(quantity: float, moq: int) -> int:
     """Округление вверх до кратности отгрузки.
 
@@ -201,6 +217,8 @@ def _build_reasons(
     effective_safety,
     category_uplift,
     category_effect,
+    counted_inbound,
+    late_inbound,
 ):
     """Обоснование строки (Must have 5).
 
@@ -257,8 +275,15 @@ def _build_reasons(
         ReasonPart("Срок поставки", f"{sku.lead_time_days or params.lead_time_days} дн"),
         ReasonPart("Потребность на период", f"{need:.0f} {unit}"),
         ReasonPart("Свободный остаток", f"{sku.free_stock:.0f} {unit}"),
-        ReasonPart("Товар в пути", f"{sku.in_transit:.0f} {unit}"),
+        ReasonPart("Учтено в пути", f"{counted_inbound:.0f} {unit}"),
     ]
+
+    if late_inbound:
+        details = "; ".join(
+            f"{item.document or 'поставка'}, {item.eta:%d.%m} — {item.quantity:.0f} {unit}"
+            for item in late_inbound
+        )
+        reasons.append(ReasonPart("Не успевает", details))
 
     if quantity and sku.moq > 1:
         reasons.append(ReasonPart("Кратность отгрузки", f"{sku.moq} {unit}"))

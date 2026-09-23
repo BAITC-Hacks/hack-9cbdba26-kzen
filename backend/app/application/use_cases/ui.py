@@ -168,7 +168,8 @@ def calculate(c: Container) -> dict[str, Any]:
         ws.current_version = draft.version
         ws.calc_at = datetime.now(UTC)
         ws.calc_stale = False
-    to_order = sum(1 for x in draft.lines.values() if x.quantity > 0)
+    # Та же классификация, что в сводке таблицы: иначе тост и счётчик «к заказу» расходятся
+    to_order = sum(1 for x in draft.lines.values() if row_status(x) == "order")
     return {
         "header": header(c),
         "order": order_current(c),
@@ -233,7 +234,7 @@ def _reason_short(line: DraftLine) -> str:
     parts = dict(line.reasons)
     # Подписи — контракт с _build_reasons в replenishment.py: переименуют там —
     # формула тихо откатится на полное обоснование, поэтому её держит тест
-    labels = ("Потребность на период", "Свободный остаток", "Товар в пути")
+    labels = ("Потребность на период", "Свободный остаток", "Учтено в пути")
     if any(label not in parts for label in labels):
         return line.explanation
     # Значения приходят как «120 шт»; единица есть в соседней колонке, в формуле она шум
@@ -244,9 +245,35 @@ def _reason_short(line: DraftLine) -> str:
     return text
 
 
-def _inbound(sku: Sku | None) -> list[dict[str, Any]]:
-    # Даты поступления пока нет в модели: eta = null, фронт покажет «—»
-    return [{"qty": sku.in_transit, "eta": None}] if sku and sku.in_transit > 0 else []
+def _inbound(
+    sku: Sku | None,
+    *,
+    today: date | None = None,
+    arrival: date | None = None,
+) -> list[dict[str, Any]]:
+    if sku is None or sku.in_transit <= 0:
+        return []
+    if not sku.inbound:
+        return [{
+            "id": "legacy", "qty": sku.in_transit, "eta": None, "days": None,
+            "doc_text": "Товар в пути", "counted": True, "in_horizon": True,
+            "where_text": "учтён целиком: дата поступления неизвестна",
+        }]
+
+    result = []
+    for index, item in enumerate(sku.inbound, start=1):
+        counted = item.eta is None or arrival is None or item.eta <= arrival
+        result.append({
+            "id": item.document or f"inbound-{index}",
+            "qty": item.quantity,
+            "eta": item.eta.isoformat() if item.eta else None,
+            "days": (item.eta - today).days if item.eta and today else None,
+            "doc_text": item.document or "Товар в пути",
+            "counted": counted,
+            "in_horizon": counted,
+            "where_text": "успевает к горизонту" if counted else "не успевает к горизонту",
+        })
+    return result
 
 
 def recommendation_row(c: Container, line: DraftLine) -> dict[str, Any]:
@@ -262,7 +289,12 @@ def recommendation_row(c: Container, line: DraftLine) -> dict[str, Any]:
         "category": (sku.category or None) if sku else None,
         "unit": line.unit, "purchase_unit": line.unit, "unit_text": line.unit,
         "free_stock": sku.free_stock if sku else None,
-        "inbound": _inbound(sku),
+        "inbound": _inbound(
+            sku,
+            today=c.workspace.calc_date or date.today(),
+            arrival=(c.workspace.calc_date or date.today())
+            + timedelta(days=c.workspace.supplier(line.supplier).lead_time_days),
+        ),
         "recommended_qty": line.recommended if line.status is not LineStatus.INSUFFICIENT_DATA
         else None,
         "final_qty": line.quantity if computed else None,
@@ -355,7 +387,7 @@ def _what_if_lines(c: Container, draft: OrderDraft, what_if: dict[str, Any]) -> 
                 MonthPoint(p.month, p.sold * factor, p.stock_start) for p in sku.history
             ))
         line = calc.calculate_line(sku, _params(c, sku.supplier, delay_days=delay))
-        a = assess(sku, line, prepare(sku.history))
+        a = assess(sku, line, prepare(sku.history, sku.bulk_orders))
         result.append(draft_line(line, a.status, a.messages, a.codes))
     return result
 
@@ -371,7 +403,7 @@ def explanation(c: Container, sku_id: str) -> dict[str, Any]:
         raise NotFoundError(f"Артикул {code!r} не найден", details={"sku_id": sku_id})
 
     s = c.workspace.supplier(sku.supplier)
-    cleaned = prepare(sku.history)
+    cleaned = prepare(sku.history, sku.bulk_orders)
     forecaster = c.forecasters[METHOD]
     cleaned_sku = replace(sku, history=cleaned.points)
     arrival = (c.workspace.calc_date or date.today()) + timedelta(days=s.lead_time_days)
@@ -402,8 +434,7 @@ def explanation(c: Container, sku_id: str) -> dict[str, Any]:
         "qty": round(raw[m].sold - next(cp.sold for cp in cleaned.points if cp.month == m)),
         "included": False,
         "title_text": f"Разовые продажи в {m.strftime('%m.%Y')} — исключены из регулярного спроса",
-        "note_text": "Продажи месяца выше ожидаемого уровня в 3 раза и более; "
-                     "ожидаемый уровень — медиана того же месяца других лет.",
+        "note_text": _one_off_note(sku, m),
     } for m in cleaned.bulk_months]
     stockouts = [{
         "id": f"s{p.month.strftime('%Y-%m')}", "month": p.month.strftime("%Y-%m"),
@@ -467,11 +498,11 @@ def explanation(c: Container, sku_id: str) -> dict[str, Any]:
                   "cover_days": cover,
                   "cover_text": f"{cover} дн." if cover is not None else "—",
                   "early_risk": line.urgency == "critical"},
-        "inbound": [{
-            "id": "i1", "qty": sku.in_transit, "eta": None, "days": None,
-            "doc_text": "Товар в пути", "counted": True, "in_horizon": True,
-            "where_text": "учтён целиком: даты поступления нет в данных",
-        }] if sku.in_transit > 0 else [],
+        "inbound": _inbound(
+            sku,
+            today=c.workspace.calc_date or date.today(),
+            arrival=(c.workspace.calc_date or date.today()) + timedelta(days=s.lead_time_days),
+        ),
         "manual": {"active": line.adjusted, "qty": line.quantity if line.adjusted else None,
                    "reason": line.adjustment_reason or None,
                    "note_text": f"изменил: {line.adjusted_by}" if line.adjusted else None},
@@ -487,6 +518,18 @@ def explanation(c: Container, sku_id: str) -> dict[str, Any]:
         # Расширение контракта: что агент делал по этой позиции
         "agent_trace": [_trace(e) for e in draft.trace if e.sku == code],
     }
+
+
+def _one_off_note(sku: Sku, month: date) -> str:
+    # Накладная — проверяемое доказательство: менеджер найдёт её в 1С по номеру
+    invoices = [b for b in sku.bulk_orders if b.month == month]
+    if not invoices:
+        return ("Продажи месяца выше ожидаемого уровня в 3 раза и более; "
+                "ожидаемый уровень — медиана того же месяца других лет.")
+    return "; ".join(
+        f"Накладная {b.invoice}: {b.quantity:g} {sku.unit} при обычной {b.regular_quantity:g}"
+        for b in invoices
+    ) + " — разовая отгрузка, излишек исключён."
 
 
 def _add_months(d: date, n: int) -> date:

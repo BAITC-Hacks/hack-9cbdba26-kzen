@@ -101,7 +101,7 @@ class ProcurementTools:
 
     def calculate_orders(self, state: AgentState) -> dict[str, Any]:
         for code, sku in state.skus.items():
-            cleaned = prepare(sku.history)
+            cleaned = prepare(sku.history, sku.bulk_orders)
             line = self._calc.calculate_line(sku, self._params_for(sku))
             state.cleaned[code] = cleaned
             state.lines[code] = line
@@ -272,7 +272,7 @@ class ReplanInboundDelay:
         params = _params_from(draft.params, sku)
         calculator = self._calculator_for(draft.params.get("method", "smoothed"))
         line = calculator.calculate_line(shifted, params)
-        cleaned = prepare(shifted.history)
+        cleaned = prepare(shifted.history, shifted.bulk_orders)
         assessment = assess(shifted, line, cleaned)
         state.log("tool_call", "ok", "Заказ пересчитан", tool="calculate_reorder_quantity",
                   sku=code, facts={"before": old_qty, "after": line.quantity,

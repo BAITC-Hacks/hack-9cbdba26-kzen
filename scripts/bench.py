@@ -1,11 +1,10 @@
-"""Замер латентности. Запуск: python scripts/bench.py [--url ...] [--n 500]
+"""Замер латентности ключевых ручек закупщика. Запуск: python scripts/bench.py [--url ...]
 
-Цифра из этого скрипта идёт прямо на слайд. Формулировка вида
-«p50 8 мс, p95 17 мс, батч 0.1 мс на объект» убеждает жюри сильнее,
-чем любые слова о производительности.
-
-Важно: первые запросы отбрасываются как прогрев, иначе инициализация
-библиотеки испортит медиану.
+Сервис должен быть запущен (`make api`). Цифры идут на слайд, поэтому:
+- первые запросы отбрасываются как прогрев;
+- тяжёлые ручки (расчёт, «что если») меряются меньшим числом повторов —
+  они пересчитывают весь ассортимент, и 500 повторов заняли бы минуты.
+В конце печатается сводка по статусам позиций — вторая половина цифр для защиты.
 """
 
 from __future__ import annotations
@@ -13,8 +12,11 @@ from __future__ import annotations
 import argparse
 import statistics
 import time
+from collections import Counter
 
 import httpx
+
+B = "/api/v1"
 
 
 def percentile(values: list[float], q: float) -> float:
@@ -24,52 +26,78 @@ def percentile(values: list[float], q: float) -> float:
     return ordered[min(int(q * len(ordered)), len(ordered) - 1)]
 
 
+def measure(client: httpx.Client, name: str, method: str, url: str, n: int, warmup: int,
+            **kwargs) -> None:
+    def one() -> float:
+        started = time.perf_counter()
+        client.request(method, url, **kwargs).raise_for_status()
+        return (time.perf_counter() - started) * 1000
+
+    for _ in range(warmup):
+        one()
+    timings = [one() for _ in range(n)]
+    print(f"{name:<34} n={n:<4} p50 {percentile(timings, 0.5):7.1f} мс   "
+          f"p95 {percentile(timings, 0.95):7.1f} мс   сред {statistics.mean(timings):7.1f} мс")
+
+
+def all_rows(client: httpx.Client) -> list[dict]:
+    """Все строки текущей версии: поиск отдаёт страницы по поставщикам, до 500 строк."""
+    rows: list[dict] = []
+    first = client.post(f"{B}/recommendations/search", json={"page_size": 500}).json()
+    for group in first["groups"]:
+        sid = group["supplier"]["id"]
+        for page in range(1, group["pages"] + 1):
+            body = {"page_size": 500, "supplier_id": sid, "page": {sid: page}}
+            data = client.post(f"{B}/recommendations/search", json=body).json()
+            rows += data["groups"][0]["rows"]
+    return rows
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://localhost:8000")
-    parser.add_argument("--n", type=int, default=500)
-    parser.add_argument("--warmup", type=int, default=20)
-    parser.add_argument("--explain", action="store_true", help="считать факторы влияния")
+    parser.add_argument("--n", type=int, default=200, help="повторы для лёгких ручек")
+    parser.add_argument("--heavy", type=int, default=10, help="повторы для пересчёта")
     args = parser.parse_args()
 
-    with httpx.Client(base_url=args.url, timeout=30) as client:
+    with httpx.Client(base_url=args.url, timeout=120) as client:
         health = client.get("/health").json()
-        print(f"Сервис: {health['status']}, компоненты: {health['components']}")
+        session = client.get(f"{B}/session").json()
+        print(f"Сервис: {health['status']}, SKU: {health['components'].get('skus')}, "
+              f"данные: {session['data_mode']}, предупреждения: {health.get('warnings')}\n")
 
-        ids = client.get("/api/v1/analytics/samples", params={"limit": 20}).json()["ids"]
-        if not ids:
-            print("В датасете нет объектов — замеряем на произвольных признаках")
+        client.post(f"{B}/session/reset")
+        measure(client, "POST /calculations (агент)", "POST", f"{B}/calculations",
+                args.heavy, 1, json={})
+        rows = all_rows(client)
+        sku_id = next(r["sku_id"] for r in rows if r["status"] == "order")
 
-        # Каждый запрос с новым значением: иначе меряем скорость кэша, а не модели.
-        def one(i: int) -> float:
-            payload = {
-                "subject_id": ids[i % len(ids)] if ids else None,
-                "features": {"__bench": i},
-                "explain": args.explain,
-            }
-            started = time.perf_counter()
-            response = client.post("/api/v1/predict", json=payload)
-            response.raise_for_status()
-            return (time.perf_counter() - started) * 1000
+        measure(client, "GET /health", "GET", "/health", args.n, 20)
+        measure(client, "POST /recommendations/search", "POST", f"{B}/recommendations/search",
+                args.n, 20, json={"page_size": 100})
+        measure(client, "  … с поиском по тексту", "POST", f"{B}/recommendations/search",
+                args.n, 20, json={"q": "300", "page_size": 100})
+        measure(client, "  … what-if задержка 14 дн", "POST", f"{B}/recommendations/search",
+                args.heavy, 1, json={"what_if": {"delay_days": 14}})
+        measure(client, "GET /skus/{id}/explanation", "GET",
+                f"{B}/skus/{sku_id}/explanation", args.n, 20)
+        measure(client, "GET /orders/current", "GET", f"{B}/orders/current", args.n, 20)
 
-        for i in range(args.warmup):
-            one(i)
+        # Экспорт доступен только после утверждения: проходим согласование один раз
+        v = client.get(f"{B}/orders/current").json()["version"]
+        client.post(f"{B}/orders/current/actions", json={"action": "submit", "order_version": v})
+        client.put(f"{B}/session/role", json={"role": "head"})
+        client.post(f"{B}/orders/current/actions", json={"action": "approve", "order_version": v})
+        measure(client, "POST /orders/export (xlsx)", "POST", f"{B}/orders/export",
+                args.heavy, 1, json={"version": v})
+        client.post(f"{B}/session/reset")
 
-        timings = [one(i) for i in range(args.n)]
-
-        print(f"\nОдиночные запросы (explain={args.explain}), всего {args.n}:")
-        print(f"  p50  {percentile(timings, 0.50):.1f} мс")
-        print(f"  p95  {percentile(timings, 0.95):.1f} мс")
-        print(f"  p99  {percentile(timings, 0.99):.1f} мс")
-        print(f"  сред {statistics.mean(timings):.1f} мс")
-
-        if ids:
-            items = [{"subject_id": i} for i in ids]
-            started = time.perf_counter()
-            client.post("/api/v1/predict/batch", json={"items": items}).raise_for_status()
-            elapsed = (time.perf_counter() - started) * 1000
-            per_item = elapsed / len(items)
-            print(f"\nБатч {len(items)} объектов: {elapsed:.0f} мс ({per_item:.3f} мс на объект)")
+        statuses = Counter(r["status"] for r in rows)
+        review = sum(r["needs_review"] for r in rows)
+        print(f"\nПозиций: {len(rows)}; статусы: {dict(statuses)}; "
+              f"needs_review от агента: {review}")
+        by_supplier = Counter(r["supplier"]["name"] for r in rows)
+        print(f"По поставщикам: {dict(by_supplier)}")
 
 
 if __name__ == "__main__":

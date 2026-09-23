@@ -149,7 +149,7 @@ export default function SkuScreen({ skuId, onBack, onSkuChange, onOrderChanged }
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 12, height: 8, background: 'var(--color-accent-100)', border: '1px solid var(--color-accent-400)', display: 'inline-block', borderRadius: 1 }} />Прогноз</span>
           </div>
           {restoredMonths > 0 && <p className="tiny" style={{ marginTop: 8 }}>За показанный период фактически продано {formatQty(shownSales)} шт. Спрос оценён в {restoredMonths} из {data.chart.months.length} месяцев. Месяцев с нулевым/пустым остатком за всю историю: {data.stockouts?.length ?? 0}. Оценку нужно проверить по исходным остаткам.</p>}
-          {shownSales === 0 && restoredMonths === 0 && data.chart.forecast.some(point => point.qty > 0) && <p className="tiny" style={{ marginTop: 8 }}>В показанных месяцах продаж нет. Ненулевой прогноз основан на более ранней истории; проверьте актуальность позиции перед заказом.</p>}
+          {shownSales === 0 && restoredMonths === 0 && data.chart.forecast.some(point => point.qty > 0) && <p className="tiny" style={{ marginTop: 8 }}>В показанных месяцах продаж нет. Прогноз на ближайший месяц — {formatQty(data.chart.forecast[0].qty)} шт. Он основан на более ранней истории; проверьте актуальность позиции перед заказом.</p>}
 
           <div style={{ marginTop: 16 }}>
             <h3 style={{ fontSize: 13, marginBottom: 8, fontFamily: 'var(--font-body)', fontWeight: 600 }}>Параметры спроса</h3>

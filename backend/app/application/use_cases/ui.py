@@ -434,6 +434,7 @@ def explanation(c: Container, sku_id: str) -> dict[str, Any]:
                          "qty": round(forecaster.forecast(cleaned_sku, m.month).monthly_demand)})
 
     origin = "synthetic" if c.data_mode == "demo" else "real"
+    iek_monthly_stock = c.data_mode != "demo" and supplier_id(sku.supplier) == "IEK"
     events = [{
         "id": f"m{m.strftime('%Y-%m')}", "kind": "month",
         "qty": round(raw[m].sold - next(cp.sold for cp in cleaned.points if cp.month == m)),
@@ -519,7 +520,10 @@ def explanation(c: Container, sku_id: str) -> dict[str, Any]:
         "cost": {"value": None, "text": "—"},
         "provenance": [
             {"input": "История продаж", "source_text": "Ежемесячные продажи", "origin": origin},
-            {"input": "Свободный остаток", "source_text": "Остатки / TDSheet", "origin": origin},
+            {"input": "Свободный остаток",
+             "source_text": ("Начальный остаток последнего месяца, не текущий снимок"
+                             if iek_monthly_stock else "Остатки / TDSheet"),
+             "origin": "assumption" if iek_monthly_stock else origin},
             {"input": "Товар в пути", "source_text": "Путь / TDSheet", "origin": origin},
             {"input": "Срок поставки", "source_text": "Настройки поставщика",
              "origin": "assumption"},

@@ -1,21 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AgentTraceEvent, AppHeader, DataOverview, RecommendationsPage, SkuId, SkuStatus, Supplier } from '../types'
+import type { AgentTraceEvent, AppHeader, DataOverview, RecommendationsPage, RecommendationRow, SkuId, SkuStatus, Supplier } from '../types'
 import { getDataOverview, searchRecommendations } from '../api/client'
-import Icon from '../components/ui/Icon'
-import { formatInt } from '../components/ui/format'
-import { Badge, Card, EmptyState, Notice, Stat, StatusBadge, UrgencyBadge } from '../components/ui'
 
-interface Props {
-  data: RecommendationsPage
-  onSkuClick: (id: SkuId) => void
-  agentTrace?: AgentTraceEvent[]
-  onHeaderChange?: (header: AppHeader) => void
-  onGoToData?: () => void
-}
+interface Props { data: RecommendationsPage; onSkuClick: (id: SkuId) => void; agentTrace?: AgentTraceEvent[]; onHeaderChange?: (header: AppHeader) => void }
 
 type SearchQuery = Parameters<typeof searchRecommendations>[0]
 type SearchMode = 'preserve' | 'apply' | 'reset'
 const PAGE_SIZE = 100
+
+const format = (value: number | null) => value == null ? '—' : new Intl.NumberFormat('ru-RU').format(value)
+
+function Status({ row }: { row: RecommendationRow }) {
+  const label: Record<SkuStatus, string> = { order: 'Заказать', enough: 'Запаса достаточно', needs_data: 'Нужны данные', insufficient_history: 'Недостаточно истории' }
+  return <span className={`tag ${row.status === 'order' ? 'tag-accent' : row.status === 'needs_data' ? 'tag-outline' : 'tag-neutral'}`}>{label[row.status]}</span>
+}
 
 function factText(value: unknown): string {
   if (value === null) return '—'
@@ -23,14 +21,7 @@ function factText(value: unknown): string {
   return JSON.stringify(value)
 }
 
-const TRACE_STATUS = {
-  ok: { label: 'Готово', tone: 'success' as const, icon: 'check' },
-  warning: { label: 'Требует внимания', tone: 'warning' as const, icon: 'alert' },
-  blocked: { label: 'Заблокировано', tone: 'danger' as const, icon: 'x' },
-  waiting: { label: 'Ожидает', tone: 'neutral' as const, icon: 'clock' },
-}
-
-export default function RecommendationsScreen({ data, onSkuClick, agentTrace = [], onHeaderChange, onGoToData }: Props) {
+export default function RecommendationsScreen({ data, onSkuClick, agentTrace = [], onHeaderChange }: Props) {
   const [view, setView] = useState(data)
   const [appliedQuery, setAppliedQuery] = useState<SearchQuery>({ page_size: PAGE_SIZE })
   const [q, setQ] = useState('')
@@ -40,7 +31,6 @@ export default function RecommendationsScreen({ data, onSkuClick, agentTrace = [
   const [sort, setSort] = useState('deficit')
   const [delay, setDelay] = useState(0)
   const [demand, setDemand] = useState(0)
-  const [whatIfOpen, setWhatIfOpen] = useState(!!data.what_if)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [categoryOptions, setCategoryOptions] = useState<DataOverview['settings']['category_options']>([])
@@ -63,7 +53,14 @@ export default function RecommendationsScreen({ data, onSkuClick, agentTrace = [
     return () => { active = false }
   }, [])
 
-  async function runSearch(query: SearchQuery, after?: () => void, failText = 'Не удалось обновить рекомендации') {
+  async function search(mode: SearchMode = 'preserve') {
+    const scenario = mode === 'apply'
+      ? (delay !== 0 || demand !== 0 ? { delay_days: delay, demand_pct: demand } : null)
+      : mode === 'reset' ? null : view.what_if
+    const query: SearchQuery = {
+      q, supplier_id: supplier || null, category: category || null, status: status || null,
+      sort, page_size: PAGE_SIZE, ...(scenario ? { what_if: scenario } : {}),
+    }
     const currentRequest = ++requestId.current
     setLoading(true)
     setError('')
@@ -73,243 +70,85 @@ export default function RecommendationsScreen({ data, onSkuClick, agentTrace = [
       setView(result)
       setAppliedQuery(query)
       onHeaderChange?.(result.header)
-      after?.()
+      if (mode === 'reset') { setDelay(0); setDemand(0) }
     } catch (cause) {
-      if (currentRequest === requestId.current) setError(`${failText}: ${String(cause)}`)
+      if (currentRequest === requestId.current) setError(`Не удалось обновить рекомендации: ${String(cause)}`)
     } finally {
       if (currentRequest === requestId.current) setLoading(false)
     }
   }
 
-  function buildQuery(mode: SearchMode, overrides: Partial<{ status: string }> = {}): SearchQuery {
-    const scenario = mode === 'apply'
-      ? (delay !== 0 || demand !== 0 ? { delay_days: delay, demand_pct: demand } : null)
-      : mode === 'reset' ? null : view.what_if
-    const statusValue = overrides.status ?? status
-    return {
-      q, supplier_id: supplier || null, category: category || null, status: statusValue || null,
-      sort, page_size: PAGE_SIZE, ...(scenario ? { what_if: scenario } : {}),
+  async function goToPage(supplierId: string, page: number) {
+    const query: SearchQuery = {
+      ...appliedQuery,
+      page: { ...Object.fromEntries(view.groups.map(group => [group.supplier.id, group.page])), [supplierId]: page },
+    }
+    const currentRequest = ++requestId.current
+    setLoading(true)
+    setError('')
+    try {
+      const result = await searchRecommendations(query)
+      if (currentRequest !== requestId.current) return
+      setView(result)
+      setAppliedQuery(query)
+      onHeaderChange?.(result.header)
+    } catch (cause) {
+      if (currentRequest === requestId.current) setError(`Не удалось открыть страницу: ${String(cause)}`)
+    } finally {
+      if (currentRequest === requestId.current) setLoading(false)
     }
   }
 
-  function search(mode: SearchMode = 'preserve') {
-    return runSearch(buildQuery(mode), () => { if (mode === 'reset') { setDelay(0); setDemand(0) } })
-  }
-
-  // Плитка со счётчиком работает как быстрый фильтр: клик по «Заказать»
-  // показывает только позиции к заказу, повторный клик снимает фильтр.
-  function toggleStatus(next: SkuStatus) {
-    const value = status === next ? '' : next
-    setStatus(value)
-    void runSearch(buildQuery('preserve', { status: value }))
-  }
-
-  function goToPage(supplierId: string, page: number) {
-    return runSearch({
-      ...appliedQuery,
-      page: { ...Object.fromEntries(view.groups.map(group => [group.supplier.id, group.page])), [supplierId]: page },
-    }, undefined, 'Не удалось открыть страницу')
-  }
-
   const { summary } = view
-  const totalRows = view.groups.reduce((sum, group) => sum + group.total, 0)
+  const metrics = [
+    { label: 'Заказать', value: summary.order },
+    { label: 'Запаса достаточно', value: summary.enough },
+    { label: 'Нужны данные', value: summary.needs_data },
+    { label: 'Недостаточно истории', value: summary.insufficient_history },
+    { label: 'Избыточный запас', value: summary.excess },
+  ]
 
-  return (
-    <div className="page stack">
-      <header className="page-head" style={{ marginBottom: 0 }}>
-        <div>
-          <h1>Рекомендованные заказы</h1>
-          <p className="page-subtitle">
-            {view.what_if
-              ? 'Показана симуляция. Сбросьте сценарий, чтобы открывать позиции и работать с сохранённым заказом.'
-              : 'Сервис посчитал потребность по каждой позиции. Откройте строку, чтобы увидеть расчёт, или перейдите к согласованию.'}
-          </p>
-        </div>
-        <div className="page-actions">
-          <button type="button" className="btn btn-secondary" onClick={onGoToData}><Icon name="settings" />Параметры расчёта</button>
-        </div>
-      </header>
+  return <div className="page page-recommendations">
+    <header className="page-head"><div><h1>Рекомендованные заказы</h1><p className="page-subtitle">{view.what_if ? 'Сейчас показана симуляция. Сбросьте её, чтобы открыть исходный расчёт по артикулу.' : 'Нажмите строку, чтобы открыть расчёт по артикулу.'}</p></div></header>
+    <div className="metric-grid recommendation-metrics">{metrics.map(metric => <div className="metric blueprint" key={metric.label}><i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" /><span className="metric-value">{format(metric.value)}</span><div className="metric-label">{metric.label}</div></div>)}</div>
 
-      <div className="stat-grid">
-        <Stat label="Заказать" value={formatInt(summary.order)} tone="accent" active={status === 'order'} onClick={() => toggleStatus('order')} hint="нужна поставка" />
-        <Stat label="Достаточно" value={formatInt(summary.enough)} tone="success" active={status === 'enough'} onClick={() => toggleStatus('enough')} hint="запас покрывает горизонт" />
-        <Stat label="Нужны данные" value={formatInt(summary.needs_data)} tone="warning" active={status === 'needs_data'} onClick={() => toggleStatus('needs_data')} hint="не попадут в файл для 1С" />
-        <Stat label="Мало истории" value={formatInt(summary.insufficient_history)} tone="neutral" active={status === 'insufficient_history'} onClick={() => toggleStatus('insufficient_history')} hint="меньше 3 месяцев продаж" />
-        <Stat label="Избыточный запас" value={formatInt(summary.excess)} tone="neutral" hint="заказывать не нужно" />
+    <section className="recommendation-filters">
+      <div className="toolbar">
+        <div className="field"><label htmlFor="recommendation-search">Поиск: код 1С, артикул, название</label><input id="recommendation-search" className="input" type="search" value={q} onChange={event => setQ(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !loading) void search() }} placeholder="например, City9" /></div>
+        <div className="field"><label htmlFor="supplier-filter">Поставщик</label><select id="supplier-filter" className="input" value={supplier} onChange={event => { setSupplier(event.target.value); setCategory('') }}><option value="">Все поставщики</option>{supplierOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
+        <div className="field"><label htmlFor="category-filter">Категория</label><select id="category-filter" className="input" value={category} disabled={categoryLoading || !!categoryError} onChange={event => setCategory(event.target.value)}><option value="">{categoryLoading ? 'Загрузка категорий…' : categoryError ? 'Категории недоступны' : 'Все категории'}</option>{categoryOptions.filter(item => item.value && (!supplier || item.value.startsWith(`${supplier}|`))).map(item => <option key={item.value} value={item.value || ''}>{supplierOptions.find(option => option.id === item.value?.split('|')[0])?.name || item.value?.split('|')[0]} · {item.label}</option>)}</select></div>
+        <div className="field"><label htmlFor="status-filter">Статус</label><select id="status-filter" className="input" value={status} onChange={event => setStatus(event.target.value)}><option value="">Все статусы</option><option value="order">К заказу</option><option value="enough">Достаточно</option><option value="needs_data">Нужны данные</option><option value="insufficient_history">Мало истории</option></select></div>
+        <div className="field"><label htmlFor="sort-filter">Сортировка</label><select id="sort-filter" className="input" value={sort} onChange={event => setSort(event.target.value)}><option value="deficit">По сроку дефицита</option><option value="code">По коду 1С</option></select></div>
+        <button className="btn btn-secondary" type="button" onClick={() => void search()} disabled={loading}>Показать</button>
       </div>
+    </section>
 
-      <Card>
-        <div className="card-body">
-          <div className="filter-bar">
-            <div className="field">
-              <label htmlFor="recommendation-search">Поиск</label>
-              <div className="input-icon">
-                <Icon name="search" size={16} />
-                <input id="recommendation-search" className="input" type="search" value={q} onChange={event => setQ(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !loading) void search() }} placeholder="Код 1С, артикул или название" />
-              </div>
-            </div>
-            <div className="field">
-              <label htmlFor="supplier-filter">Поставщик</label>
-              <select id="supplier-filter" className="input" value={supplier} onChange={event => { setSupplier(event.target.value); setCategory('') }}>
-                <option value="">Все поставщики</option>
-                {supplierOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="category-filter">Категория</label>
-              <select id="category-filter" className="input" value={category} disabled={categoryLoading || !!categoryError} onChange={event => setCategory(event.target.value)}>
-                <option value="">{categoryLoading ? 'Загрузка…' : categoryError ? 'Недоступны' : 'Все категории'}</option>
-                {categoryOptions.filter(item => item.value && (!supplier || item.value.startsWith(`${supplier}|`))).map(item => (
-                  <option key={item.value} value={item.value || ''}>
-                    {supplierOptions.find(option => option.id === item.value?.split('|')[0])?.name || item.value?.split('|')[0]} · {item.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="status-filter">Статус</label>
-              <select id="status-filter" className="input" value={status} onChange={event => setStatus(event.target.value)}>
-                <option value="">Все статусы</option>
-                <option value="order">Заказать</option>
-                <option value="enough">Достаточно</option>
-                <option value="needs_data">Нужны данные</option>
-                <option value="insufficient_history">Мало истории</option>
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="sort-filter">Сортировка</label>
-              <select id="sort-filter" className="input" value={sort} onChange={event => setSort(event.target.value)}>
-                <option value="deficit">Сначала срочные</option>
-                <option value="code">По коду 1С</option>
-              </select>
-            </div>
-            <button className="btn btn-primary" type="button" onClick={() => void search()} disabled={loading}>
-              {loading ? <span className="spinner" style={{ borderTopColor: '#fff', borderColor: 'rgba(255,255,255,.35)' }} /> : <Icon name="search" />}Показать
-            </button>
-          </div>
+    <section className="blueprint recommendation-whatif">
+      <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
+      <div><h2 className="card-title" style={{ fontSize: 18 }}>Что если</h2><p className="tiny">Сценарий меняет таблицу и показатели; в сохранённый заказ он не записывается.</p></div>
+      <div className="toolbar"><div className="field"><label htmlFor="delay-days">Задержка всех поставок, дн.</label><input id="delay-days" className="input" type="number" min="0" value={delay} onChange={event => setDelay(Number(event.target.value))} /></div><div className="field"><label htmlFor="demand-pct">Изменение спроса, %</label><input id="demand-pct" className="input" type="number" min="-100" value={demand} onChange={event => setDemand(Number(event.target.value))} /></div><button type="button" className="btn btn-secondary" disabled={loading} onClick={() => void search('apply')}>Применить</button><button type="button" className="btn btn-ghost" disabled={loading || !view.what_if} onClick={() => void search('reset')}>Сбросить</button></div>
+    </section>
+
+    {view.what_if && <div className="notice" style={{ order: 4 }} role="status">Активна симуляция: строки ниже нельзя открыть, потому что карточка показывает исходный сохранённый расчёт. Экран согласования также показывает исходный заказ; результаты симуляции там не утверждаются. Для работы с исходным заказом нажмите «Сбросить».</div>}
+    {categoryError && <div className="notice" style={{ order: 1 }} role="alert">Не удалось загрузить полный список категорий: {categoryError}. Поиск и другие фильтры работают.</div>}
+    {agentTrace.length > 0 && <section className="blueprint panel" style={{ order: 4 }}>
+      <div className="inline-actions" style={{ marginBottom: 10 }}><h2 className="card-title" style={{ fontSize: 18 }}>Ход работы агента</h2><span className="tag tag-neutral">{agentTrace.length} шагов</span></div>
+      <div style={{ display: 'grid', gap: 8 }}>{agentTrace.map(event => <details key={event.seq} style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 8 }}>
+        <summary className="inline-actions" style={{ cursor: 'pointer' }}><span className="tiny">{event.seq}.</span><span>{event.title}</span><span className={`tag ${event.status === 'ok' ? 'tag-accent' : event.status === 'waiting' ? 'tag-neutral' : 'tag-outline'}`}>{event.status === 'ok' ? 'Готово' : event.status === 'warning' ? 'Требует внимания' : event.status === 'blocked' ? 'Заблокировано' : 'Ожидает'}</span></summary>
+        <div style={{ padding: '8px 18px 2px' }}>{event.tool && <div className="tiny">Инструмент: <code>{event.tool}</code></div>}{event.sku && <div className="tiny">Артикул: <code>{event.sku}</code></div>}
+          {Object.entries(event.facts).length > 0 && <div className="scroll-table"><table className="table"><tbody>{Object.entries(event.facts).map(([key, value]) => <tr key={key}><td className="tiny" style={{ width: '35%' }}>{key}</td><td>{factText(value)}</td></tr>)}</tbody></table></div>}
         </div>
-        <div className="card-footer row-between">
-          <div className="row">
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setWhatIfOpen(open => !open)} aria-expanded={whatIfOpen}>
-              <Icon name="sparkles" size={14} />Сценарий «что если»
-              <Icon name={whatIfOpen ? 'chevron-down' : 'chevron-right'} size={14} />
-            </button>
-            {view.what_if && <Badge tone="accent" icon="sparkles">Задержка {view.what_if.delay_days} дн. · спрос {view.what_if.demand_pct > 0 ? '+' : ''}{view.what_if.demand_pct}%</Badge>}
-          </div>
-          <span className="tiny">Всего позиций по фильтру: {formatInt(totalRows)}</span>
-        </div>
-        {whatIfOpen && (
-          <div className="card-body" style={{ borderTop: '1px solid var(--color-border)' }}>
-            <div className="row-between">
-              <div>
-                <h3>Что если…</h3>
-                <p className="tiny">Пересчитывает таблицу и счётчики. В сохранённый заказ сценарий не записывается.</p>
-              </div>
-              <div className="whatif-form">
-                <div className="field"><label htmlFor="delay-days">Все поставки задержатся на, дн.</label><input id="delay-days" className="input" type="number" min="0" value={delay} onChange={event => setDelay(Number(event.target.value))} /></div>
-                <div className="field"><label htmlFor="demand-pct">Спрос изменится на, %</label><input id="demand-pct" className="input" type="number" min="-100" value={demand} onChange={event => setDemand(Number(event.target.value))} /></div>
-                <button type="button" className="btn btn-secondary" disabled={loading} onClick={() => void search('apply')}>Применить</button>
-                <button type="button" className="btn btn-ghost" disabled={loading || !view.what_if} onClick={() => void search('reset')}>Сбросить</button>
-              </div>
-            </div>
-          </div>
-        )}
-      </Card>
-
-      {view.what_if && (
-        <Notice tone="warning" role="status" icon="sparkles">
-          <b>Активна симуляция.</b> Строки нельзя открыть: карточка показывает исходный сохранённый расчёт, а экран согласования — исходный заказ. Чтобы вернуться к нему, нажмите «Сбросить».
-        </Notice>
-      )}
-      {categoryError && <Notice tone="warning" role="alert">Не удалось загрузить список категорий: {categoryError}. Поиск и остальные фильтры работают.</Notice>}
-      {error && <Notice tone="danger" role="alert">{error}</Notice>}
-
-      {agentTrace.length > 0 && (
-        <Card>
-          <div className="card-header">
-            <div><h3><Icon name="sparkles" size={16} className="muted" />Что сделал агент при расчёте</h3><p className="tiny">Каждый шаг — бизнес-событие: что проверено и что найдено. Количество считает код, агент решает, какие проверки добавить.</p></div>
-            <Badge tone="neutral">{agentTrace.length} шагов</Badge>
-          </div>
-          <div className="card-body timeline">
-            {agentTrace.map(event => {
-              const meta = TRACE_STATUS[event.status]
-              return (
-                <div className="timeline-item" key={event.seq}>
-                  <div className={`timeline-icon ${event.status}`}><Icon name={meta.icon} size={14} /></div>
-                  <div>
-                    <div className="timeline-title">{event.title}<Badge tone={meta.tone}>{meta.label}</Badge></div>
-                    {(event.tool || event.sku) && <div className="tiny" style={{ marginTop: 2 }}>{event.tool && <>Инструмент <code>{event.tool}</code></>}{event.tool && event.sku && ' · '}{event.sku && <>Артикул <code>{event.sku}</code></>}</div>}
-                    {Object.keys(event.facts).length > 0 && (
-                      <details className="disclosure" style={{ marginTop: 6 }}>
-                        <summary><Icon name="chevron-right" size={12} />Факты</summary>
-                        <table className="table table-kv" style={{ marginTop: 6, fontSize: 12 }}><tbody>{Object.entries(event.facts).map(([key, value]) => <tr key={key}><td>{key}</td><td>{factText(value)}</td></tr>)}</tbody></table>
-                      </details>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </Card>
-      )}
-
-      {view.groups.map(group => (
-        <Card key={group.supplier.id}>
-          <div className="group-header">
-            <div className="group-title">
-              <h2>{group.supplier.name}</h2>
-              <Badge tone="neutral">{group.count_text}</Badge>
-              <span className="tiny">Показано {formatInt((group.page - 1) * PAGE_SIZE + 1)}–{formatInt((group.page - 1) * PAGE_SIZE + group.rows.length)} из {formatInt(group.total)}</span>
-            </div>
-            {group.pages > 1 && (
-              <div className="pagination">
-                <button className="btn btn-ghost btn-sm" type="button" disabled={loading || group.page <= 1} onClick={() => void goToPage(group.supplier.id, group.page - 1)} aria-label="Предыдущая страница"><Icon name="chevron-left" size={14} /></button>
-                <label>Страница <select className="input" value={group.page} disabled={loading} onChange={event => void goToPage(group.supplier.id, Number(event.target.value))}>{Array.from({ length: group.pages }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}</option>)}</select> из {group.pages}</label>
-                <button className="btn btn-ghost btn-sm" type="button" disabled={loading || group.page >= group.pages} onClick={() => void goToPage(group.supplier.id, group.page + 1)} aria-label="Следующая страница"><Icon name="chevron-right" size={14} /></button>
-              </div>
-            )}
-          </div>
-          <div className="table-wrap">
-            <table className="table" style={{ minWidth: 1180 }}>
-              <thead>
-                <tr>
-                  <th>Код 1С</th>
-                  <th style={{ minWidth: 240 }}>Наименование</th>
-                  <th className="numeric">Свободно</th>
-                  <th className="numeric">В пути · ETA</th>
-                  <th className="numeric">Заказать</th>
-                  <th style={{ minWidth: 240 }}>Обоснование</th>
-                  <th>Срочность</th>
-                  <th>Статус</th>
-                  <th aria-label="Открыть" />
-                </tr>
-              </thead>
-              <tbody>
-                {group.rows.map(row => (
-                  <tr
-                    className={view.what_if ? '' : 'clickable'}
-                    key={row.sku_id}
-                    tabIndex={view.what_if ? undefined : 0}
-                    onClick={view.what_if ? undefined : () => onSkuClick(row.sku_id)}
-                    onKeyDown={view.what_if ? undefined : event => { if (event.key === 'Enter') onSkuClick(row.sku_id) }}
-                  >
-                    <td><code className="mono">{row.code_1c}</code>{row.supplier_article && <div className="cell-secondary">{row.supplier_article}</div>}</td>
-                    <td><div className="cell-primary">{row.name}</div><div className="cell-secondary">{row.unit}{row.category ? ` · кат. ${row.category}` : ''}</div></td>
-                    <td className="numeric">{formatInt(row.free_stock)}</td>
-                    <td className="numeric">{row.inbound.length ? row.inbound.map(item => `${formatInt(item.qty)}${item.eta ? ` · ${item.eta.slice(8, 10)}.${item.eta.slice(5, 7)}` : ''}`).join(', ') : <span className="muted">—</span>}</td>
-                    <td className="numeric"><span className="qty-strong">{formatInt(row.final_qty)}</span>{row.manual && <div><Badge tone="outline" icon="edit">вручную</Badge></div>}</td>
-                    <td className="cell-secondary" style={{ whiteSpace: 'normal' }}>{row.reason_short}</td>
-                    <td><UrgencyBadge urgency={row.urgency} /></td>
-                    <td><div className="row" style={{ gap: 4 }}><StatusBadge status={row.status} />{row.excess && <Badge tone="neutral">избыток</Badge>}</div></td>
-                    <td style={{ width: 36 }}>{!view.what_if && <Icon name="chevron-right" className="row-chevron" />}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      ))}
-      {view.groups.length === 0 && <EmptyState icon="search" title="Ничего не найдено">Измените фильтры или очистите поиск.</EmptyState>}
-    </div>
-  )
+      </details>)}</div>
+    </section>}
+    {error && <div className="notice page-section" role="alert">{error}</div>}
+    {view.groups.map(group => <section className="recommendation-group" key={group.supplier.id}>
+      <div className="inline-actions" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
+        <div className="inline-actions"><h2>{group.supplier.name}</h2><span className="tag tag-neutral">{group.count_text}</span><span className="tiny">Показано {format((group.page - 1) * PAGE_SIZE + 1)}–{format((group.page - 1) * PAGE_SIZE + group.rows.length)} из {format(group.total)}</span></div>
+        {group.pages > 1 && <div className="inline-actions"><button className="btn btn-ghost" type="button" disabled={loading || group.page <= 1} onClick={() => void goToPage(group.supplier.id, group.page - 1)}>Назад</button><label className="tiny">Страница <select className="input" style={{ width: 'auto', display: 'inline-block', marginLeft: 4 }} value={group.page} disabled={loading} onChange={event => void goToPage(group.supplier.id, Number(event.target.value))}>{Array.from({ length: group.pages }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}</option>)}</select> из {group.pages}</label><button className="btn btn-ghost" type="button" disabled={loading || group.page >= group.pages} onClick={() => void goToPage(group.supplier.id, group.page + 1)}>Вперёд</button></div>}
+      </div>
+      <div className="scroll-table"><table className="table" style={{ minWidth: 1280 }}><thead><tr><th>Поставщик</th><th>Код 1С</th><th>Артикул</th><th style={{ minWidth: 220 }}>Наименование</th><th>Ед.</th><th className="numeric">Свободно</th><th className="numeric">Путь · ETA</th><th className="numeric">Заказ</th><th style={{ minWidth: 230 }}>Обоснование</th><th>Срочность</th><th>Статус</th></tr></thead><tbody>{group.rows.map(row => <tr className={view.what_if ? '' : 'clickable'} key={row.sku_id} tabIndex={view.what_if ? undefined : 0} onClick={view.what_if ? undefined : () => onSkuClick(row.sku_id)} onKeyDown={view.what_if ? undefined : event => { if (event.key === 'Enter') onSkuClick(row.sku_id) }}><td className="tiny">{group.supplier.name}</td><td><code>{row.code_1c}</code></td><td className="tiny">{row.supplier_article || '—'}</td><td>{row.name}</td><td>{row.unit}</td><td className="numeric">{format(row.free_stock)}</td><td className="numeric">{row.inbound.length ? row.inbound.map(item => `${format(item.qty)}${item.eta ? ` · ${item.eta.slice(5)}` : ''}`).join(', ') : '—'}</td><td className="numeric"><strong>{format(row.final_qty)}</strong>{row.manual && <span className="tag tag-outline" style={{ marginLeft: 4 }}>ручн.</span>}</td><td className="tiny">{row.reason_short}</td><td>{row.urgency === 'urgent' ? 'Срочно' : row.urgency === 'this_cycle' ? 'В этом цикле' : '—'}</td><td><Status row={row} />{row.excess && <span className="tag tag-neutral" style={{ marginLeft: 4 }}>избыток</span>}</td></tr>)}</tbody></table></div>
+    </section>)}
+    {view.groups.length === 0 && <div className="empty-state page-section">По выбранным фильтрам позиции не найдены.</div>}
+    <section className="recommendation-trends"><h2>Тренды по категориям</h2><button className="btn btn-ghost" type="button" disabled title="API пока не отдаёт тренды по категориям">Показать</button></section>
+  </div>
 }

@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { DataOverview, ValidationScenarios } from '../types'
 import { getDataOverview, getValidation } from '../api/client'
-import Icon from '../components/ui/Icon'
-import { Badge, Card, CardHeader, EmptyState, Loading, Notice } from '../components/ui'
 
 export default function ValidationScreen() {
   const [data, setData] = useState<ValidationScenarios | null>(null)
@@ -15,72 +13,18 @@ export default function ValidationScreen() {
       .catch(cause => setError(String(cause)))
   }, [])
 
-  const allPassed = data ? data.passed === data.total : false
-  const ratio = data && data.total ? Math.round((data.passed / data.total) * 100) : 0
+  return <div className="page">
+    <header className="page-head"><div><h1>Проверки по ТЗ</h1><p className="page-subtitle">Проверки рассчитываются на сервере по сценариям приёмки. Результат отражает текущую версию расчётного ядра.</p></div>{data && <span className={`tag ${data.passed === data.total ? 'tag-accent' : 'tag-outline'}`}>{data.summary_text}</span>}</header>
+    {error && <div className="notice" role="alert">Не удалось загрузить проверки: {error}</div>}
 
-  return (
-    <div className="page stack">
-      <header className="page-head" style={{ marginBottom: 0 }}>
-        <div>
-          <h1>Проверки по ТЗ</h1>
-          <p className="page-subtitle">Сценарии приёмки из технического задания прогоняются на сервере против текущей версии расчётного ядра.</p>
-        </div>
-      </header>
+    <section>
+      <div className="inline-actions" style={{ marginBottom: 10 }}><h2>Проверки по ТЗ</h2>{data && <span className="tag tag-neutral">{data.passed} / {data.total}</span>}</div>
+      <div className="scroll-table"><table className="table" style={{ minWidth: 740 }}><thead><tr><th style={{ width: 50 }}>№</th><th>Сценарий</th><th>Ожидаемое поведение</th><th>Фактический результат</th><th>Итог</th></tr></thead><tbody>{data?.items.map(item => <tr key={item.n}><td className="muted">{item.n}</td><td style={{ fontWeight: 500 }}>{item.name}</td><td className="tiny">{item.expected_text || '—'}</td><td>{item.actual_text}</td><td><span className={`tag ${item.passed ? 'tag-accent' : 'tag-outline'}`}>{item.passed ? 'Пройден' : 'Ошибка'}</span></td></tr>)}</tbody></table></div>
+      {!data && !error && <p className="muted" style={{ marginTop: 12 }}>Загрузка проверок…</p>}
+    </section>
 
-      {error && <Notice tone="danger" role="alert">Не удалось загрузить проверки: {error}</Notice>}
+    <section className="page-section blueprint panel"><h2 className="card-title">Хронологический backtest</h2><p className="page-subtitle">Скользящее окно сравнивает прогнозы с регулярным спросом последующих месяцев. Метрики WAPE, MAE и bias появятся после подключения результатов бэктеста к API.</p></section>
 
-      <Card>
-        <div className="card-body">
-          <div className="row-between">
-            <div className="row" style={{ gap: 14 }}>
-              <div className={`check-icon ${allPassed ? 'pass' : 'fail'}`} style={{ width: 44, height: 44 }}><Icon name={allPassed ? 'shield' : 'alert'} size={22} /></div>
-              <div>
-                <h2>{data ? data.summary_text : 'Проверяем…'}</h2>
-                <p className="tiny">{allPassed ? 'Все обязательные требования выполнены.' : data ? 'Часть сценариев не прошла, подробности ниже.' : ''}</p>
-              </div>
-            </div>
-            {data && <Badge tone={allPassed ? 'success' : 'warning'}>{data.passed} / {data.total}</Badge>}
-          </div>
-          <div className="progress" style={{ marginTop: 16 }}><i style={{ width: `${ratio}%` }} /></div>
-        </div>
-        {data ? (
-          <div className="check-list" style={{ borderTop: '1px solid var(--color-border)' }}>
-            {data.items.map(item => (
-              <div className="check-item" key={item.n}>
-                <div className={`check-icon ${item.passed ? 'pass' : 'fail'}`}><Icon name={item.passed ? 'check' : 'x'} size={16} /></div>
-                <div>
-                  <div className="check-name">{item.n}. {item.name}</div>
-                  {item.expected_text && <div className="tiny" style={{ marginTop: 2 }}>Ожидание: {item.expected_text}</div>}
-                  <div className="muted" style={{ marginTop: 4, fontSize: 'var(--text-sm)' }}>{item.actual_text}</div>
-                </div>
-                <Badge tone={item.passed ? 'success' : 'danger'}>{item.passed ? 'Пройден' : 'Ошибка'}</Badge>
-              </div>
-            ))}
-          </div>
-        ) : !error && <Loading text="Загружаем сценарии…" />}
-      </Card>
-
-      <div className="grid-2">
-        <Card>
-          <CardHeader icon="database" title="Какие источники участвуют в расчёте" />
-          {overview ? (
-            overview.sources.length ? (
-              <div className="table-wrap">
-                <table className="table table-compact">
-                  <thead><tr><th>Поставщик</th><th>Файл</th><th>Применение</th></tr></thead>
-                  <tbody>{overview.sources.map(source => <tr key={source.key}><td><Badge tone="outline">{source.supplier.id === 'SE' ? 'Systeme Electric' : 'ИЭК'}</Badge></td><td className="cell-primary" style={{ whiteSpace: 'normal' }}>{source.file?.name || source.type_text}</td><td className="muted" style={{ whiteSpace: 'normal' }}>{source.usage_text || 'применён в расчёте'}</td></tr>)}</tbody>
-                </table>
-              </div>
-            ) : <div className="card-body"><EmptyState icon="database" title="Источники не найдены" /></div>
-          ) : <Loading />}
-        </Card>
-        <Card className="card-muted">
-          <CardHeader icon="history" title="Хронологический бэктест" actions={<Badge tone="outline">скоро</Badge>} />
-          <div className="card-body">
-            <p className="muted">Скользящее окно сравнивает прогноз с фактическим регулярным спросом следующих месяцев. Метрики WAPE, MAE и bias появятся, когда результаты бэктеста будут отдаваться через API.</p>
-          </div>
-        </Card>
-      </div>
-    </div>
-  )
+    <section className="page-section"><h2 className="section-heading">Участие источников в расчёте</h2><div className="scroll-table"><table className="table"><thead><tr><th>Источник</th><th>Поставщик</th><th>Применение</th><th>Файл</th></tr></thead><tbody>{overview?.sources.map(source => <tr key={source.key}><td>{source.type_text}</td><td>{source.supplier.id === 'SE' ? 'Systeme Electric' : 'ИЭК'}</td><td>{source.usage_text || 'Роль источника не указана'}</td><td className="tiny">{source.file?.name || '—'}</td></tr>)}{overview && overview.sources.length === 0 && <tr><td colSpan={4} className="muted">Источники в текущем окружении не найдены.</td></tr>}</tbody></table></div></section>
+  </div>
 }

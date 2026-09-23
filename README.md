@@ -214,12 +214,31 @@ async def my_setup(settings):
 
 ## Что ещё не сделано
 
-- `infrastructure/storage/excel_loader.py` — заглушка: сервис поднимается на пустой
-  номенклатуре. Ловушки, которые парсер обязан учесть, — в `CASE.md`.
 - Товар в пути без дат поступления: what-if задержки вычитает партию из пути,
   а не сдвигает ETA. Даты есть в `Путь ИЭК` (заголовки «поступление до …»).
 - LLM-политика агента и валидатор чисел в тексте LLM.
 - Интерфейс.
+
+## Данные и расчёт без HTTP
+
+`infrastructure/storage/excel_normalizer.py` читает шесть типов книг каждого
+поставщика, связывает код 1С с артикулом, нормализует единицы, возвраты, остатки,
+резервы, путь и MOQ. Наблюдаемые проблемы собраны в `data_report.md`.
+
+Ядро можно вызвать напрямую из Python, без FastAPI:
+
+```python
+from app.application.use_cases.replenishment import CalcParams, calculate_recommendations
+from app.infrastructure.forecasting.baseline import BaselineForecaster
+
+orders = calculate_recommendations(
+    normalized_skus,
+    BaselineForecaster(),
+    CalcParams(lead_time_days=45),
+)
+```
+
+Методология и ограничения описаны в `docs/methodology.md`.
 
 ## Тесты
 
@@ -227,7 +246,7 @@ async def my_setup(settings):
 make test
 ```
 
-42 теста. Покрыто: очистка истории (выбросы, stockout, сезонность, тренд),
+Покрыто: Excel-нормализация, очистка истории (выбросы, stockout, сезонность, тренд),
 группировка по поставщикам, кратность отгрузки, влияние срока поставки,
 переключение методов, ошибки 404 и 422, все пять требований пункта 7 ТЗ,
 версии, правки с причиной, утверждение и его сброс, 409 на устаревшей ревизии,
@@ -283,6 +302,8 @@ ml/
 └── notebooks/       шаблон разбора данных
 tests/               расчёт, api заказов, версии и утверждение, агент
 docs/CHECKLIST.md    статус задач команды
+docs/methodology.md  формула, нормализация и ограничения
+data_report.md       фактический аудит выгрузок
 scripts/bench.py     замер латентности
 CLAUDE.md            контекст для Claude Code
 .claude/skills/      скиллы: кейс, обучение, архитектура, скорость, защита

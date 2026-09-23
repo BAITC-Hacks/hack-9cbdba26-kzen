@@ -29,8 +29,8 @@ from app.domain.entities import (
     Urgency,
     urgency_for,
 )
-from app.domain.ports import ForecasterPort, SkuRepositoryPort
 from app.domain.exceptions import DomainValidationError
+from app.domain.ports import ForecasterPort, SkuRepositoryPort
 
 MONTH_DAYS = 30.0
 
@@ -171,8 +171,9 @@ def _build_reasons(sku, cleaned, forecast: Forecast, params, need, available, qu
     Каждое число берётся из расчёта выше. Ни одно не сочиняется — поэтому
     менеджер может проверить любую цифру вручную и получить то же самое.
     """
+    unit = sku.unit
     reasons = [
-        ReasonPart("Средние продажи", f"{forecast.base_demand:.1f} шт/мес"),
+        ReasonPart("Средние продажи", f"{forecast.base_demand:.1f} {unit}/мес"),
     ]
 
     if abs(forecast.growth_factor - 1) > 0.05:
@@ -187,7 +188,7 @@ def _build_reasons(sku, cleaned, forecast: Forecast, params, need, available, qu
         reasons.append(
             ReasonPart(
                 "Компенсация отсутствия товара",
-                f"{cleaned.stockout_months} мес, +{cleaned.compensated:.0f} шт",
+                f"{cleaned.stockout_months} мес, +{cleaned.compensated:.0f} {unit}",
                 effect=cleaned.compensated,
             )
         )
@@ -196,24 +197,24 @@ def _build_reasons(sku, cleaned, forecast: Forecast, params, need, available, qu
         reasons.append(
             ReasonPart(
                 "Исключены разовые крупные продажи",
-                f"−{cleaned.removed_bulk:.0f} шт",
+                f"−{cleaned.removed_bulk:.0f} {unit}",
                 effect=-cleaned.removed_bulk,
             )
         )
 
     if sku.on_hand_stock is not None:
-        reasons.append(ReasonPart("Остаток на складе", f"{sku.on_hand_stock:.0f} шт"))
+        reasons.append(ReasonPart("Остаток на складе", f"{sku.on_hand_stock:.0f} {unit}"))
     if sku.reserved_stock > 0:
-        reasons.append(ReasonPart("Зарезервировано", f"{sku.reserved_stock:.0f} шт"))
+        reasons.append(ReasonPart("Зарезервировано", f"{sku.reserved_stock:.0f} {unit}"))
 
     reasons += [
         ReasonPart("Срок поставки", f"{sku.lead_time_days or params.lead_time_days} дн"),
-        ReasonPart("Потребность на период", f"{need:.0f} шт"),
-        ReasonPart("Свободный остаток", f"{sku.free_stock:.0f} шт"),
-        ReasonPart("Товар в пути", f"{sku.in_transit:.0f} шт"),
+        ReasonPart("Потребность на период", f"{need:.0f} {unit}"),
+        ReasonPart("Свободный остаток", f"{sku.free_stock:.0f} {unit}"),
+        ReasonPart("Товар в пути", f"{sku.in_transit:.0f} {unit}"),
     ]
 
     if quantity and sku.moq > 1:
-        reasons.append(ReasonPart("Кратность отгрузки", f"{sku.moq} шт"))
+        reasons.append(ReasonPart("Кратность отгрузки", f"{sku.moq} {unit}"))
 
     return reasons

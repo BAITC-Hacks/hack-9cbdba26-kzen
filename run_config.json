@@ -1,0 +1,26 @@
+{
+  "task": "deterministic inventory replenishment",
+  "data_sources": ["IEK Excel exports", "Systeme Electric Excel exports"],
+  "data_period": "2024-01..2026-09",
+  "split": {
+    "type": "chronological",
+    "status": "not_run",
+    "reason": "Current verification uses requirements and synthetic scenarios; no accuracy is claimed."
+  },
+  "baseline": {
+    "window_months": 12,
+    "growth_bounds": [0.5, 2.0],
+    "seasonality_bounds": [0.3, 3.0]
+  },
+  "bulk_invoice": {
+    "median_factor": 10.0,
+    "minimum_share": 0.5,
+    "client_proxy": "invoice_number"
+  },
+  "defaults": {
+    "lead_time_days": 45,
+    "coverage_months": 1.0,
+    "safety_factor": 0.2
+  },
+  "random_seed": null
+}

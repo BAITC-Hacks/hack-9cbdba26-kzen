@@ -116,7 +116,7 @@ class OrderLine:
     def explain(self) -> str:
         """Обоснование одной строкой — то, что видит менеджер в таблице."""
         parts = [f"{r.label}: {r.value}" for r in self.reasons]
-        return "; ".join(parts) + f" → заказать {self.quantity} шт"
+        return "; ".join(parts) + f" → заказать {self.quantity} {self.sku.unit}"
 
 
 @dataclass(frozen=True, slots=True)

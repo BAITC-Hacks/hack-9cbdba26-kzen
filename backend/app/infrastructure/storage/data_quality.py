@@ -60,7 +60,11 @@ class DataQualityReport:
             "",
         ]
         for key, value in sorted(self.metrics.items()):
-            rendered = json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value
+            rendered = (
+                json.dumps(value, ensure_ascii=False)
+                if isinstance(value, (dict, list))
+                else value
+            )
             lines.append(f"- `{key}`: {rendered}")
 
         lines.extend(["", "## Риски и ограничения", ""])

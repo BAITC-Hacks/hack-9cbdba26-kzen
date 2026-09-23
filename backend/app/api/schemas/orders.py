@@ -34,6 +34,7 @@ class OrderLineSchema(BaseModel):
     name: str
     article: str
     supplier: str
+    unit: str
     quantity: int
     urgency: str
     monthly_demand: float
@@ -52,6 +53,7 @@ class OrderLineSchema(BaseModel):
             name=line.sku.name,
             article=line.sku.article,
             supplier=line.sku.supplier,
+            unit=line.sku.unit,
             quantity=line.quantity,
             urgency=line.urgency.value,
             monthly_demand=line.monthly_demand,

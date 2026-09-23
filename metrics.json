@@ -1,0 +1,19 @@
+{
+  "task": "supplier_replenishment",
+  "primary_metric": "requirements_pass_rate",
+  "direction": "maximize",
+  "baseline": "12m_mean_x_growth_x_seasonality",
+  "improved_variant": "exponential_smoothing",
+  "self_checks": {
+    "passed": 5,
+    "total": 5,
+    "pass_rate": 1.0
+  },
+  "automated_tests": {
+    "passed": 40,
+    "total": 40
+  },
+  "forecast_accuracy": null,
+  "recommendation": "KEEP BASELINE",
+  "reason": "Baseline is reproducible and passes requirements; forecast superiority needs chronological backtest."
+}

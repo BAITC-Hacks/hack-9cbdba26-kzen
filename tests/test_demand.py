@@ -16,6 +16,7 @@ from app.domain.demand import (
     remove_bulk_orders,
     seasonality_factor,
 )
+from app.domain.entities import BulkOrderEvent, MonthPoint
 
 
 def test_bulk_order_is_trimmed_to_expected_level():
@@ -107,3 +108,34 @@ def test_prepare_removes_bulk_before_compensating():
     assert result.stockout_months == 1
     # компенсация считается по нормальному уровню (~30), а не по раздутому выбросом
     assert result.compensated < 100
+
+
+def test_confirmed_invoice_bulk_is_removed_from_its_month():
+    """Номер накладной подтверждает клиентский сценарий, а не заменяет историю."""
+    values = [30.0] * 24
+    values[15] = 1030.0
+    event = BulkOrderEvent(
+        month=date(2025, 4, 1),
+        invoice="CLIENT-42",
+        quantity=1000.0,
+        regular_quantity=30.0,
+    )
+
+    result = prepare(history(values), (event,))
+
+    assert result.removed_bulk >= 970.0
+    assert result.bulk_invoices == ("CLIENT-42",)
+    assert result.points[15].sold <= 60.0
+
+
+def test_missing_stock_history_is_not_a_confirmed_stockout():
+    """Отсутствующая строка остатков не даёт права придумывать упущенный спрос."""
+    points = tuple(
+        MonthPoint(date(2024, month, 1), sold=0.0, stock_start=0.0, stock_known=False)
+        for month in range(1, 7)
+    )
+
+    _, added, count = compensate_stockouts(points)
+
+    assert added == 0.0
+    assert count == 0

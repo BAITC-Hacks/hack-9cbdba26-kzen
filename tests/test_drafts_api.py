@@ -117,7 +117,7 @@ def test_export_only_after_approval(client):
     assert client.get(f"{BASE}/{draft['version']}/export").status_code == 409
 
     _approve(client, draft)
-    response = client.get(f"{BASE}/{draft['version']}/export")
+    response = client.get(f"{BASE}/{draft['version']}/export?format=csv")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
 
@@ -135,7 +135,7 @@ def test_export_uses_manager_quantity(client):
     ).json()
     _approve(client, updated)
 
-    text = client.get(f"{BASE}/{draft['version']}/export").content.decode("utf-8-sig")
+    text = client.get(f"{BASE}/{draft['version']}/export?format=csv").content.decode("utf-8-sig")
     row = next(r for r in csv.reader(io.StringIO(text), delimiter=";") if r[1] == line["code"])
     assert row[6] == "777"
     assert row[7] == "крупный объект"

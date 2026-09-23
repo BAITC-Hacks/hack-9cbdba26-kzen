@@ -7,6 +7,7 @@ threading-замок хранилища — ни то, ни другое нел�
 
 from __future__ import annotations
 
+from typing import Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, Query, Response
@@ -24,6 +25,10 @@ from app.application.use_cases.drafts import AdjustLine, ApproveDraft, CreateDra
 from app.application.use_cases.replenishment import CalcParams
 
 router = APIRouter(prefix="/drafts", tags=["drafts"])
+MEDIA_TYPES = {
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "csv": "text/csv; charset=utf-8",
+}
 RESPONSES = {
     404: {"model": ErrorResponse},
     409: {"model": ErrorResponse},
@@ -96,18 +101,26 @@ def approve(version: int, payload: ApproveRequest, container: ContainerDep) -> D
 
 @router.get(
     "/{version}/export",
-    responses={**RESPONSES, 200: {"content": {"text/csv": {}}}},
-    summary="Выгрузить утверждённый заказ в CSV",
-    description="Файл для загрузки в 1С. Поставщику ничего не отправляется.",
+    responses={**RESPONSES, 200: {"content": {v.split(";")[0]: {} for v in MEDIA_TYPES.values()}}},
+    summary="Выгрузить утверждённый заказ для 1С",
+    description=(
+        "xlsx — лист на поставщика с «Код 1с»; csv — запасной вариант. "
+        "Позиции с недостаточными данными не выгружаются, пока менеджер не поставит "
+        "количество сам. Поставщику ничего не отправляется."
+    ),
 )
 def export(
     version: int,
     container: ContainerDep,
     supplier: str | None = Query(default=None, description="Только один поставщик"),
+    fmt: Literal["xlsx", "csv"] = Query(default="xlsx", alias="format"),
+    warehouse: str = Query(default="Алматы", max_length=60, description="Склад получения"),
 ) -> Response:
-    filename, content = ExportDraft(container.drafts).execute(version, supplier=supplier)
+    filename, content = ExportDraft(container.drafts).execute(
+        version, supplier=supplier, fmt=fmt, warehouse=warehouse
+    )
     return Response(
         content=content,
-        media_type="text/csv; charset=utf-8",
+        media_type=MEDIA_TYPES[fmt],
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )

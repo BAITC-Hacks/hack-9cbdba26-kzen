@@ -25,6 +25,18 @@ class DraftStatus(StrEnum):
     APPROVED = "approved"
 
 
+class LineStatus(StrEnum):
+    """Можно ли доверять рекомендации без дополнительной проверки человеком.
+
+    INSUFFICIENT_DATA — это не «заказать 0». Ноль менеджер прочтёт как
+    «заказывать не нужно», хотя на самом деле мы просто не знаем.
+    """
+
+    READY = "ready"
+    NEEDS_REVIEW = "needs_review"
+    INSUFFICIENT_DATA = "insufficient_data"
+
+
 @dataclass(frozen=True, slots=True)
 class DraftLine:
     """Строка заказа: рекомендация расчёта и решение менеджера рядом.
@@ -44,10 +56,21 @@ class DraftLine:
     explanation: str
     adjustment_reason: str = ""
     adjusted_by: str = ""
+    unit: str = "шт"
+    status: LineStatus = LineStatus.READY
+    issues: tuple[str, ...] = ()
 
     @property
     def adjusted(self) -> bool:
         return bool(self.adjustment_reason)
+
+    @property
+    def exportable(self) -> bool:
+        """В 1С уходит только то, за что кто-то отвечает: либо расчёт на полных
+        данных, либо количество, которое менеджер поставил сам с причиной."""
+        if self.quantity <= 0:
+            return False
+        return self.status is not LineStatus.INSUFFICIENT_DATA or self.adjusted
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +82,23 @@ class DraftEvent:
     author: str
     action: str
     detail: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class TraceEvent:
+    """Шаг агента в терминах бизнеса: какой инструмент вызван и что он нашёл.
+
+    Не рассуждения модели, а наблюдаемые факты: facts заполняются только
+    из результатов инструментов, поэтому любое число в ленте можно проверить.
+    """
+
+    seq: int
+    type: str       # tool_call | observation | flag | decision | awaiting_approval
+    status: str     # ok | warning | blocked | waiting
+    title: str
+    tool: str = ""
+    sku: str = ""
+    facts: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +119,8 @@ class OrderDraft:
     approved_by: str = ""
     approved_at: datetime | None = None
     events: tuple[DraftEvent, ...] = field(default_factory=tuple)
+    trace: tuple[TraceEvent, ...] = field(default_factory=tuple)
+    parent_version: int | None = None
 
     @property
     def approved(self) -> bool:
@@ -153,11 +195,61 @@ class OrderDraft:
             events=(*self.events, DraftEvent(at, author, "approve", f"ревизия {self.revision}")),
         )
 
+    def derive(
+        self,
+        version: int,
+        line: DraftLine,
+        *,
+        reason: str,
+        author: str,
+        at: datetime,
+        trace: tuple[TraceEvent, ...] = (),
+    ) -> OrderDraft:
+        """Новая версия после изменения входных данных по одной позиции.
+
+        Именно новая версия, а не правка текущей: изменились факты, на которых
+        стоял расчёт, и старое утверждение к ним не относится. Старая версия
+        остаётся как была — видно, что утверждали и что поменялось после.
+        """
+        return OrderDraft(
+            version=version,
+            created_at=at,
+            params=dict(self.params),
+            lines={**self.lines, line.code: line},
+            events=(
+                DraftEvent(at, author, "derive", f"из версии {self.version}: {reason}"),
+            ),
+            trace=trace,
+            parent_version=self.version,
+        )
+
     def by_supplier(self) -> dict[str, list[DraftLine]]:
         grouped: dict[str, list[DraftLine]] = {}
         for line in self.lines.values():
             grouped.setdefault(line.supplier, []).append(line)
         return grouped
+
+
+def draft_line(
+    line: OrderLine,
+    status: LineStatus = LineStatus.READY,
+    issues: tuple[str, ...] = (),
+) -> DraftLine:
+    return DraftLine(
+        code=line.sku.code,
+        name=line.sku.name,
+        supplier=line.sku.supplier,
+        article=line.sku.article,
+        moq=line.sku.moq,
+        urgency=line.urgency.value,
+        recommended=line.quantity,
+        quantity=line.quantity,
+        explanation=line.explain(),
+        # getattr: единицу добавит загрузчик данных; до этого все позиции в штуках
+        unit=getattr(line.sku, "unit", "шт"),
+        status=status,
+        issues=issues,
+    )
 
 
 def draft_from_lines(
@@ -167,6 +259,8 @@ def draft_from_lines(
     params: dict[str, Any],
     author: str,
     at: datetime,
+    assessments: dict[str, tuple[LineStatus, tuple[str, ...]]] | None = None,
+    trace: tuple[TraceEvent, ...] = (),
 ) -> OrderDraft:
     """Заморозить результат расчёта в версию.
 
@@ -174,18 +268,9 @@ def draft_from_lines(
     должен остаться ровно таким, каким его видел менеджер, а не пересчитываться
     при каждом открытии.
     """
+    assessments = assessments or {}
     draft_lines = {
-        line.sku.code: DraftLine(
-            code=line.sku.code,
-            name=line.sku.name,
-            supplier=line.sku.supplier,
-            article=line.sku.article,
-            moq=line.sku.moq,
-            urgency=line.urgency.value,
-            recommended=line.quantity,
-            quantity=line.quantity,
-            explanation=line.explain(),
-        )
+        line.sku.code: draft_line(line, *assessments.get(line.sku.code, (LineStatus.READY, ())))
         for line in lines
     }
     return OrderDraft(
@@ -194,4 +279,5 @@ def draft_from_lines(
         params=dict(params),
         lines=draft_lines,
         events=(DraftEvent(at, author, "calculate", f"{len(draft_lines)} позиций"),),
+        trace=trace,
     )

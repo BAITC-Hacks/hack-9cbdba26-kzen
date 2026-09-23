@@ -96,7 +96,7 @@ class ApproveDraft:
 
 
 class ExportDraft:
-    """Выгрузка согласованного списка в CSV для загрузки в 1С.
+    """Выгрузка согласованного списка для 1С: xlsx по умолчанию, CSV — запасной.
 
     Только утверждённая версия: выгрузка черновика — это ровно тот сценарий
     «ушло не то», от которого защищает утверждение.
@@ -105,13 +105,25 @@ class ExportDraft:
     def __init__(self, store: MemoryDraftStore) -> None:
         self._store = store
 
-    def execute(self, version: int, *, supplier: str | None = None) -> tuple[str, bytes]:
+    def execute(
+        self,
+        version: int,
+        *,
+        supplier: str | None = None,
+        fmt: str = "xlsx",
+        warehouse: str = "Алматы",
+    ) -> tuple[str, bytes]:
         draft = self._store.get(version)
         if not draft.approved:
             raise ConflictError(
                 "Выгрузить можно только утверждённый заказ",
                 details={"version": version, "status": draft.status.value},
             )
+        if fmt == "xlsx":
+            from app.infrastructure.export.onec_xlsx import render_purchase_order
+
+            content = render_purchase_order(draft, warehouse=warehouse, supplier=supplier)
+            return f"purchase_order_1c_v{draft.version}.xlsx", content
 
         buffer = io.StringIO()
         # «;» и BOM — иначе русский Excel откроет файл одной колонкой кракозябр
@@ -121,7 +133,7 @@ class ExportDraft:
             if supplier and name != supplier:
                 continue
             for line in lines:
-                if line.quantity <= 0:
+                if not line.exportable:
                     continue
                 writer.writerow([
                     line.supplier, line.code, line.article, line.name, line.moq,

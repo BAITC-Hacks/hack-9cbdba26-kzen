@@ -1,4 +1,4 @@
-import type { AgentTraceEvent, RecommendationsPage, SkuExplanation, OrderCurrent, AppHeader, ValidationScenarios, DataOverview } from '../types'
+import type { AgentTraceEvent, RecommendationsPage, SkuExplanation, OrderCurrent, AppHeader, ValidationScenarios, DataOverview, ImportJob, ImportStarted, ImportSupplier } from '../types'
 
 const BASE = '/api/v1'
 
@@ -110,4 +110,40 @@ export async function getAuditLog(page = 1, pageSize = 50): Promise<{ items: Arr
 
 export async function getVersionDiff(version: number): Promise<{ title_text: string; rows: Array<{ code_1c: string; name: string; in_version_text: string; current_text: string }> }> {
   return get(`/orders/versions/${version}/diff`)
+}
+
+/* --- Импорт выгрузок 1С --- */
+
+/* Ошибки импорта приходят в формате проекта `{ error: { code, message } }`, и текст
+   нужен пользователю в панели, а не голый статус. Если тело не JSON — падаем на статус. */
+async function readApiError(res: Response, path: string): Promise<Error> {
+  try {
+    const body = await res.json() as { error?: { code?: string; message?: string; field?: string } }
+    if (body?.error?.message) {
+      const field = body.error.field ? ` (${body.error.field})` : ''
+      return new Error(`${body.error.message}${field}`)
+    }
+  } catch { /* тело не JSON — ниже общий вариант */ }
+  return new Error(`${res.status} ${path}`)
+}
+
+export async function startImport(supplier: ImportSupplier, files: File[]): Promise<ImportStarted> {
+  const form = new FormData()
+  form.append('supplier', supplier)
+  for (const file of files) form.append('files', file, file.name)
+  /* Content-Type не задаём: браузер сам проставит multipart boundary, иначе сервер не разберёт тело. */
+  const res = await fetch(`${BASE}/imports`, { method: 'POST', body: form })
+  if (!res.ok) throw await readApiError(res, '/imports')
+  return res.json()
+}
+
+export async function getImport(importId: string): Promise<ImportJob> {
+  const path = `/imports/${encodeURIComponent(importId)}`
+  const res = await fetch(`${BASE}${path}`)
+  if (!res.ok) throw await readApiError(res, path)
+  return res.json()
+}
+
+export async function listImports(): Promise<ImportJob[]> {
+  return get('/imports')
 }

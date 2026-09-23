@@ -13,8 +13,10 @@ from __future__ import annotations
 import statistics
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from app.application.use_cases import imports as imports_uc
 from app.application.use_cases.agent import RunProcurementAgent
 from app.application.use_cases.replenishment import CalcParams, CalculateOrders
 from app.application.use_cases.selfcheck import RunSelfChecks
@@ -119,9 +121,8 @@ def header(c: Container) -> dict[str, Any]:
         "snapshot_stale": False,
         "what_if_active": False,
         "data_mode": c.data_mode,
-        "data_mode_text": (
+        "data_mode_text": _data_mode_text(c) if not demo else (
             "Коды и названия — из выгрузок партнёра, числа по позициям — синтетика"
-            if demo else "Данные из выгрузок партнёра"
         ),
         "order": None if draft is None else {
             "version": draft.version, "revision": draft.revision,
@@ -130,6 +131,15 @@ def header(c: Container) -> dict[str, Any]:
         "role": ws.role,
         "user": {"id": ws.role, "name": ROLE_NAMES.get(ws.role, ws.role)},
     }
+
+
+def _data_mode_text(c: Container) -> str:
+    last = c.imports.last_applied()
+    if c.data_mode != "uploaded" or last is None or last.finished_at is None:
+        return "Данные из выгрузок партнёра"
+    # Время по Алматы: менеджер сверяет его с часами на стене, а не с UTC
+    stamp = last.finished_at.astimezone(ALMATY).strftime("%d.%m.%Y %H:%M")
+    return f"Данные загружены через интерфейс {stamp}"
 
 
 def set_role(c: Container, role: str) -> dict[str, Any]:
@@ -923,19 +933,42 @@ def data_overview(c: Container) -> dict[str, Any]:
             })
     files = sorted(c.settings.data_dir.rglob("*.xlsx")) if c.settings.data_dir and \
         c.settings.data_dir.exists() else []
-    return {
-        "header": header(c),
-        "sources": [{
-            "key": f.stem, "supplier": {"id": "SE" if "system" in f.as_posix().lower()
-                                        else "IEK", "name": ""},
+    # Поставщик, чьи данные заменены импортом, показывается по загруженным файлам,
+    # а не по папке: файлы из папки для него уже не действуют
+    applied = {sid: c.imports.last_applied(name)
+               for sid, name in (("IEK", "IEK"), ("SE", "Systeme Electric"))}
+    sources = []
+    for f in files:
+        sid = "SE" if "system" in f.as_posix().lower() else "IEK"
+        if applied[sid] is not None:
+            continue
+        sources.append({
+            "key": f.stem, "supplier": {"id": sid, "name": ""},
             "type_text": f.stem, "usage_text": "", "freshness_text": None,
             "volume_text": None, "volume_origin": "real",
             "file": {"name": f.name, "sheets": None, "rows": None, "status": "applied"
-                     if c.data_mode == "imported" else "uploaded",
-                     "status_text": "применён" if c.data_mode == "imported"
+                     if c.data_mode != "demo" else "uploaded",
+                     "status_text": "применён" if c.data_mode != "demo"
                      else "загружен, парсер в работе"},
             "import_id": None,
-        } for f in files],
+        })
+    for sid, job in applied.items():
+        if job is None:
+            continue
+        for name in job.files:
+            sources.append({
+                "key": f"{job.import_id}:{name}", "supplier": {"id": sid, "name": ""},
+                "type_text": Path(name).stem, "usage_text": "",
+                "freshness_text": _data_mode_text(c),
+                "volume_text": None, "volume_origin": "real",
+                "file": {"name": name, "sheets": None, "rows": None, "status": "applied",
+                         "status_text": "загружен через интерфейс, применён"},
+                "import_id": job.import_id,
+            })
+    return {
+        "header": header(c),
+        "sources": sources,
+        "imports": imports_uc.list_imports(c),
         "matching": [],
         "readiness": readiness,
         "assumptions": [

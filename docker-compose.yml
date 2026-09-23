@@ -1,0 +1,57 @@
+# Базовый запуск поднимает только сервис:  docker compose up
+# Redis и Postgres включаются профилями:   docker compose --profile redis --profile db up
+#
+# Профили — это архитектурное решение, а не украшение: лишний сервис в компоузе
+# означает лишнюю точку отказа на демо и минуты ожидания при старте.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Пути внутри контейнера отличаются от локальных — задаём явно.
+      MODEL_PATH: /srv/ml/artifacts/model.joblib
+      MODEL_METADATA_PATH: /srv/ml/artifacts/metadata.json
+      DATASET_PATH: /srv/data/dataset.parquet
+    volumes:
+      # Артефакты и данные монтируем, чтобы переобучение не требовало пересборки образа.
+      - ./ml/artifacts:/srv/ml/artifacts
+      - ./data:/srv/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["redis"]
+    ports:
+      - "6379:6379"
+    command: redis-server --save "" --appendonly no  # кэш, а не база: персистентность не нужна
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  db:
+    image: postgres:16-alpine
+    profiles: ["db"]
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:

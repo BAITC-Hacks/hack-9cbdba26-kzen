@@ -18,5 +18,5 @@ catboost_info/
 data/IEK/
 data/Systeme electric/
 
-# Внутренние заметки команды (чеклисты, передача задач) — не для репозитория
-docs/
+# Личные сообщения для передачи задач; общий чеклист docs/CHECKLIST.md — в репозитории
+docs/HANDOFF_*.md

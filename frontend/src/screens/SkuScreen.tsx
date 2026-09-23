@@ -103,7 +103,7 @@ export default function SkuScreen({ skuId, onBack, onSkuChange, onOrderChanged }
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
         <span className='tag tag-outline'>{data.sku.code_1c}</span>
-        <span className='tag tag-outline'>{data.sku.supplier_article}</span>
+        {data.sku.supplier_article && <span className='tag tag-outline'>{data.sku.supplier_article}</span>}
         <span className='tag tag-outline'>{data.sku.supplier.name}</span>
         <span className='tag tag-outline'>{data.sku.category ? `Кат. ${data.sku.category}` : 'Без категории'}</span>
         {data.status === 'order' && <span className='tag tag-accent'>Заказать</span>}
@@ -115,6 +115,9 @@ export default function SkuScreen({ skuId, onBack, onSkuChange, onOrderChanged }
 
       <div className="data-two-column">        <div>
           <h2 style={{ marginBottom: 12 }}>История и прогноз</h2>
+          {data.chart.months.length === 0 ? (
+            <div className="notice" role="status">Истории продаж нет. Прогноз и рекомендуемое количество для этой позиции не рассчитаны. Проверьте источник данных; при необходимости укажите количество вручную с причиной.</div>
+          ) : <>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 120, marginBottom: 8, overflowX: 'auto' }}>
             {data.chart.months.map(m => {
               const regularSales = Math.max(0, m.sales - m.one_off_excluded)
@@ -159,6 +162,7 @@ export default function SkuScreen({ skuId, onBack, onSkuChange, onOrderChanged }
               </tbody>
             </table>
           </div>
+          </>}
 
           <div className="page-section">
             <h3 className="card-title" style={{ fontSize: 18, marginBottom: 8 }}>Поправки спроса</h3>

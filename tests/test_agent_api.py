@@ -141,6 +141,11 @@ def test_xlsx_for_1c_has_sheet_per_supplier_and_skips_unknown(agent_client):
     ws = wb["Systeme Electric"]
     header = [c.value for c in ws[1]]
     assert header[:3] == ["Код 1с", "Артикул поставщика", "Номенклатура"]
+    # выход по ТЗ п. 5: обоснование и срочность у каждой строки
+    rows = list(ws.iter_rows(min_row=2, values_only=True))
+    explanation, urgency = header.index("Обоснование"), header.index("Срочность")
+    assert all(row[explanation] and "заказать" in row[explanation] for row in rows)
+    assert all(row[urgency] for row in rows)
     codes = [row[0] for row in ws.iter_rows(min_row=2, values_only=True)]
     assert "300200428_" in codes
     assert "ATN000330" not in codes  # без кода 1С в загрузку не идёт

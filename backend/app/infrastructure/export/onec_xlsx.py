@@ -3,6 +3,8 @@
 Колонки взяты из выгрузок партнёра, а не придуманы: «Код 1с» — ключ, по которому
 1С сопоставит номенклатуру; «Артикул поставщика» — чтобы проверить глазами.
 Лист на поставщика: заказ поставщику в 1С — это один документ на одного контрагента.
+«Срочность» и «Обоснование» — обязательная часть выхода по ТЗ (п. 5): файл читает
+не только 1С, но и руководитель, который спросит, почему именно столько.
 
 Сервис формирует файл, но никуда его не отправляет — это решает человек.
 """
@@ -18,9 +20,13 @@ from app.domain.workflow import OrderDraft
 
 COLUMNS = [
     "Код 1с", "Артикул поставщика", "Номенклатура", "Ед.", "Рекомендовано",
-    "Количество", "Склад", "Причина корректировки", "Версия расчёта", "Утвердил",
+    "Количество", "Склад", "Срочность", "Статус", "Причина корректировки",
+    "Обоснование", "Версия расчёта", "Утвердил",
 ]
-WIDTHS = [14, 22, 48, 6, 14, 12, 12, 34, 14, 16]
+WIDTHS = [14, 22, 48, 6, 14, 12, 12, 12, 16, 34, 80, 14, 16]
+# Коды из API понятны фронту, а в файле их читает человек
+URGENCY = {"critical": "критично", "high": "высокая", "normal": "обычная", "none": "—"}
+STATUS = {"ready": "готово", "needs_review": "проверить", "insufficient_data": "нет данных"}
 # Excel запрещает эти символы в имени листа и режет его до 31 знака
 FORBIDDEN = str.maketrans({c: " " for c in "[]:*?/\\"})
 
@@ -45,8 +51,9 @@ def render_purchase_order(draft: OrderDraft, *, warehouse: str,
         for line in rows:
             ws.append([
                 line.code, line.article, line.name, line.unit, line.recommended,
-                line.quantity, warehouse, line.adjustment_reason,
-                f"v{draft.version}.r{draft.revision}", draft.approved_by,
+                line.quantity, warehouse, URGENCY.get(line.urgency, line.urgency),
+                STATUS.get(line.status.value, line.status.value), line.adjustment_reason,
+                line.explanation, f"v{draft.version}.r{draft.revision}", draft.approved_by,
             ])
         for i, width in enumerate(WIDTHS):
             ws.column_dimensions[chr(ord("A") + i)].width = width
